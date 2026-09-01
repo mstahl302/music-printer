@@ -77,6 +77,10 @@ open "dist/Music Printer.app"
 Produces `dist/Music Printer.app`, which runs on the machine that built
 it.
 
+Or just run **`./run.sh`** — it works from any directory, creates the
+virtualenv if missing, builds, and opens the app, all inside its own
+process so your shell is untouched (nothing to `deactivate` afterwards).
+
 ## Distributing to other Macs
 
 A bare PyInstaller build runs here but Gatekeeper blocks it elsewhere. To
