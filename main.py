@@ -23,11 +23,12 @@ from musicprinter.pdfio import PdfError
 
 # UI label  ->  strip mode
 COVER_MODES = {
-    "Smart (detect)": "smart",
-    "Always remove first page": "always",
-    "Don't remove": "none",
+    "Always Remove First Page": "always",
+    "Don't Remove": "none",
+    "Smart Strip (remove if detected)": "smart",
 }
 MODE_TO_LABEL = {v: k for k, v in COVER_MODES.items()}
+DEFAULT_COVER_LABEL = "Smart Strip (remove if detected)"
 
 # state machine
 READY = "ready"
@@ -56,7 +57,7 @@ class App(tk.Tk):
         self.printer = tk.StringVar(value=self.cfg["last_printer"])  # real CUPS queue name
         self.printer_display = tk.StringVar(value="")                # friendly text shown on the button
         self._printers: dict[str, printing.Printer] = {}
-        self.cover_label = tk.StringVar(value=MODE_TO_LABEL.get(self.cfg["strip_mode"], "Smart (detect)"))
+        self.cover_label = tk.StringVar(value=MODE_TO_LABEL.get(self.cfg["strip_mode"], DEFAULT_COVER_LABEL))
         self.source_path: Path | None = None
 
         # derived
@@ -97,7 +98,7 @@ class App(tk.Tk):
         self.file_label = ttk.Label(frm, text="No file chosen", width=44, anchor="w")
         self.file_label.grid(row=2, column=1, columnspan=2, sticky="w", **pad)
 
-        ttk.Label(frm, text="Cover sheet:").grid(row=3, column=0, sticky="w", **pad)
+        ttk.Label(frm, text="Strip Cover Sheet:").grid(row=3, column=0, sticky="w", **pad)
         self.cover_menu = ttk.OptionMenu(
             frm, self.cover_label, self.cover_label.get(), *COVER_MODES,
             command=lambda _=None: self._recompute_plan())

@@ -65,13 +65,13 @@ you resume it.
 Click **Choose PDF…** and pick a sheet music file. Password-protected
 PDFs aren't supported.
 
-### 3. Choose how to handle a cover sheet
+### 3. Strip Cover Sheet
 
-| Mode | What it does |
+| Option | What it does |
 |---|---|
-| **Smart (detect)** — default | Removes page 1 only if it looks like a vendor cover: no engraved music on the page *and* Musicnotes licence boilerplate text. Conservative — when in doubt it keeps the page. |
-| **Always remove first page** | Drops page 1 unconditionally (unless the file is a single page). |
-| **Don't remove** | Prints the PDF exactly as-is. |
+| **Always Remove First Page** | Drops page 1 unconditionally (unless the file is a single page). |
+| **Don't Remove** | Prints the PDF exactly as-is. |
+| **Smart Strip (remove if detected)** — default | Removes page 1 only if it looks like a vendor cover: no engraved music on the page *and* Musicnotes licence boilerplate text. Conservative — when in doubt it keeps the page. |
 
 The detection signals are documented in
 [docs/cover_signals.md](docs/cover_signals.md).

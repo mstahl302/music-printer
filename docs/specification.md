@@ -111,8 +111,8 @@ A single non-resizable window, top to bottom:
 1. **Printer:** dropdown, default = system default printer, shows
    "(default)" and warns inline if the selected printer is paused.
 2. **Sheet music (PDF):** "Choose PDF…" button + path label.
-3. **Cover sheet:** dropdown — `Don't remove` / `Always remove first page` /
-   `Smart (detect)`; default **Smart**.
+3. **Strip Cover Sheet:** dropdown — `Always Remove First Page` /
+   `Don't Remove` / `Smart Strip (remove if detected)`; default **Smart**.
 4. **Plan preview:** a read-only panel with a first-page thumbnail, updated
    whenever the file or mode changes ([§5.3](#53-plan-preview)).
 5. **Start** button (enabled only when printer + valid PDF are set).
