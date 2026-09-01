@@ -290,9 +290,10 @@ class App(tk.Tk):
         try:
             pdf = jobs.build_pass_pdf(plan, which, self._tmpdir)
             title = f"{plan.source_path.name} — {which}"
-            job_id = printing.submit(pdf, printer_name, title=title)
+            reverse = bool(self.cfg.get("reverse_page_order", True))
+            job_id = printing.submit(pdf, printer_name, title=title, reverse_order=reverse)
             settings.log(f"submit {which} job={job_id} file={pdf.name} "
-                         f"pages={plan.n_effective} mode={plan.strip_mode}")
+                         f"pages={plan.n_effective} mode={plan.strip_mode} reverse={reverse}")
             self._q.put(("submitted", which, job_id))
         except Exception as exc:
             self._q.put(("submit_err", which, exc))

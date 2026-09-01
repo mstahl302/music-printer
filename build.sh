@@ -10,6 +10,7 @@ rm -rf build dist
 pyinstaller \
   --name "$APP_NAME" \
   --windowed \
+  --icon assets/icon.icns \
   --noconfirm \
   main.py
 

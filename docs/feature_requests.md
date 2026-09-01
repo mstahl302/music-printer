@@ -9,13 +9,14 @@ within each section. Nothing here is designed yet — when an item is picked
 up, it gets its own design pass (and, where it touches printing behavior,
 an update to [specification.md](specification.md)).
 
-> **Note on scope:** several items below (duplex mode, page order,
-> back-side rotation) intentionally revisit decisions
+> **Note on scope:** several items below (duplex mode, back-side rotation,
+> full per-printer page-order handling) revisit decisions
 > [specification.md §4.2](specification.md#42-out-of-scope--non-goals-v1)
-> and [§7.4](specification.md#74-fixed-printer-assumptions) marked as
-> fixed, non-configurable v1 assumptions. That's fine — this doc is where
-> "maybe later" lives — but when one of them is actioned, the spec itself
-> needs a new revision, not a quiet contradiction.
+> and [§7.4](specification.md#74-printer-assumptions) that were originally
+> fixed. Page order has already been reopened (it's a settings-file value
+> now — see #4). That's fine — this doc is where "maybe later" lives — but
+> when one of these is actioned, the spec needs a matching revision, not a
+> quiet contradiction.
 
 ---
 
@@ -72,18 +73,18 @@ of mid-flip cancel/error states. Likely worth pairing with CUPS capability
 probing (`lpoptions -l`) so the app can suggest the right answer instead of
 asking the user to know it.
 
-### 4. Configurable page order (reverse vs. forward printing)
+### 4. Page order as a first-class, per-printer setting
 
-Promote `printer_reverses_output` (currently hard-coded `true`, per
-[Appendix A](specification.md#appendix-a-page-ordering-rationale)) to a
-real per-printer setting. When set to "forward," reverse each pass's page
-list before building the temp PDF instead of sending it ascending, per the
-math already sketched for this case.
+Partly done: page order is now controlled by `reverse_page_order` in the
+settings file (default on), applied via `lp -o outputorder=reverse` — see
+[specification.md §7.4](specification.md#74-printer-assumptions). What's
+left: scope it **per printer** (not one global value), expose it in the
+extended setup dialog (#2), and have the welcome flow (#6) derive it from
+a test print instead of making the user guess.
 
-**Value:** today the app only produces correct output on a printer that
-behaves like the owner's. This is the single change that makes it usable
-on someone else's printer at all — without it, every other user has to
-reverse-engineer the ordering assumption for themselves.
+**Value:** the settings-file toggle already unblocks other printers; this
+turns it into something a non-technical user can actually find and set,
+and something that survives switching between two printers.
 
 ### 5. Configurable 180° rotation on pass 2
 
@@ -142,49 +143,68 @@ that plumbing directly.
 times to print 6 copies" into "flip once." Fewer physical touches means
 fewer chances to misalign the stack or lose count partway through.
 
+### 9. Guided-print dialog with a louder flip cue
+
+Replace the inline progress strip and flip panel with a dedicated **print
+dialog** that opens when the user clicks Start: a busy/progress bar and a
+Cancel button, modal to the run so the main window's controls aren't live
+mid-job.
+
+When pass 1 finishes and it's time to flip, make the prompt **impossible
+to miss**: an audible cue (a ding) plus a large **green "Continue — pages
+are flipped" button** in the dialog, with Cancel kept visually secondary
+(red). Today the flip prompt is a small framed button
+([main.py §flip_frame](../main.py)) that someone looking away from the
+screen can easily sit through.
+
+**Value:** the flip is the one point in the run where the app is waiting
+on the human, and missing it stalls the job indefinitely. A separate
+dialog keeps the run's state in one place (progress, cancel, flip), and a
+loud, big-target, colour-coded cue matches how much the moment matters.
+
 ---
 
 ## Other ideas worth considering
 
-### 9. Printer profiles
+### 10. Printer profiles
 
 Save the duplex/order/rotation settings (#3–#5) **per printer**, not
 globally, so someone who prints at home and at a rehearsal hall doesn't
 need to redo the welcome flow every time they switch. Natural companion to
 #2 and #6.
 
-### 10. Saved set-lists
+### 11. Saved set-lists
 
 Once batch printing (#1) exists, let a set of files + order be saved under
 a name ("2026-09-06 Service") and reprinted later without reselecting
 files — the realistic case is the same weekly rotation with small changes.
 
-### 11. Per-file cover-strip override in a batch
+### 12. Per-file cover-strip override in a batch
 
 In batch mode, let one file in the set override the global cover-strip
 mode (e.g. one song is already stripped, or isn't from Musicnotes at all
 and needs "Don't remove" while the rest use Smart).
 
-### 12. More cover-sheet vendors
+### 13. More cover-sheet vendors
 
 The detector registry in [cover_signals.md §5](cover_signals.md#5-extensibility)
 was built for this: add detectors for Sheet Music Direct, Hal Leonard
 Digital, MuseScore.com exports, etc., as real samples turn up.
 
-### 13. Full-document preview, not just page 1
+### 14. Full-document preview, not just page 1
 
 Let the user flip through all pages of the plan preview (or at least the
 first couple of pages after the strip), not just the thumbnail of page 1
 — catches a bad cover-strip decision or a corrupt/misordered PDF that a
 single thumbnail wouldn't reveal.
 
-### 14. Retry a failed pass without restarting
+### 15. Retry a failed pass without restarting
 
 If pass 2 fails partway (paper jam, printer goes offline, printer
 disconnects), let the user retry just that pass instead of starting the
 whole file over from Start.
 
-### 15. Windows/Linux port
+### 16. Windows/Linux port
 
 `printing.py` already sits on `lp`/`lpstat`/`cancel`, which exist on Linux
 (CUPS) as-is — a Linux build is mostly a packaging exercise. Windows would

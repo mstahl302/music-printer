@@ -20,6 +20,7 @@ DEFAULTS: dict = {
     "strip_mode": "smart",          # none | always | smart
     "last_folder": "",
     "confidence_threshold": 0.70,
+    "reverse_page_order": True,      # add `-o outputorder=reverse` to lp
 }
 
 

@@ -1,0 +1,35 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <title>Music Printer</title>
+  <desc>A sheet of music caught mid-flip, with a yellow orbit arrow sweeping around it.</desc>
+
+  <!-- app-icon rounded square (transparent corners) -->
+  <rect width="1024" height="1024" rx="240" fill="#0e9488"/>
+
+  <!-- orbit: far side, passes behind the page -->
+  <path d="M170 560 A 330 104 0 0 1 830 560"
+        fill="none" stroke="#ffc400" stroke-width="34" stroke-linecap="round"/>
+
+  <!-- the page, folded in 3D and turning over -->
+  <polygon points="512,210 664,300 664,724 512,814" fill="#bdeae4"/>
+  <polygon points="296,262 512,210 512,814 296,762" fill="#ffffff"/>
+  <line x1="512" y1="210" x2="512" y2="814" stroke="#0e9488" stroke-width="6"/>
+
+  <!-- note on the front face -->
+  <g fill="#0f172a">
+    <ellipse cx="378" cy="602" rx="58" ry="45" transform="rotate(-18 378 602)"/>
+    <rect x="420" y="368" width="22" height="250" rx="7"/>
+    <path d="M420 368 q96 22 96 104 q-24 -62 -96 -54 z"/>
+  </g>
+
+  <!-- ghosted note showing through on the back face -->
+  <g fill="#67c7bc">
+    <ellipse cx="602" cy="556" rx="50" ry="38" transform="rotate(18 602 556)"/>
+    <rect x="568" y="360" width="18" height="200" rx="6"/>
+  </g>
+
+  <!-- orbit: near side, sweeps across the front and into a bold arrowhead
+       that reaches past the page and buries the end of the curve -->
+  <path d="M830 560 A 330 104 0 0 1 340 651"
+        fill="none" stroke="#ffc400" stroke-width="34" stroke-linecap="round"/>
+  <path d="M232 628 L392 590 L366 726 Z" fill="#ffc400"/>
+</svg>

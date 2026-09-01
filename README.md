@@ -23,8 +23,20 @@ musicprinter/
   printing.py            CUPS submit / track / cancel (lp / lpstat / cancel)
   settings.py            persisted settings + log
 tests/                   pytest: page math, cover detection, flow state machine
-build.sh                 produces "dist/Music Printer.app"
+assets/                  app icon: icon.svg (source) -> icon.icns, via make_icon.py
+build.sh                 produces "dist/Music Printer.app" (bundles assets/icon.icns)
 ```
+
+## Icon
+
+`assets/icon.svg` is the source of truth. `assets/icon.icns` (checked in,
+consumed by `build.sh`) is regenerated from it with:
+
+```bash
+.venv/bin/python assets/make_icon.py
+```
+
+That rasterises the SVG with PyMuPDF and packs a `.icns` with `iconutil`.
 
 Full design: [docs/specification.md](docs/specification.md).
 Cover-detection heuristics: [docs/cover_signals.md](docs/cover_signals.md).

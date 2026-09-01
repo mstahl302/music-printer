@@ -31,12 +31,16 @@ automates.
 
 ## 2. Background & constraints
 
-- **Printer reverses page order (fixed assumption).** The owner's printer
-  emits PDF pages in reverse order, so a job sent as pages `[2, 4, 6]`
-  lands in the output tray stacked so that page 2 is on top. Combined with
-  a stack flip, EVEN then ODD yields pages in reading order. This is
-  **assumed, hard-coded, and not configurable in v1**; see
-  [Appendix A](#appendix-a-page-ordering-rationale).
+- **Pages are delivered last-to-first.** A job sent as pages `[2, 4, 6]`
+  must land in the output tray stacked so that page 2 is on top;
+  combined with a stack flip, EVEN then ODD then yields reading order.
+  The app forces this at the CUPS level with `-o outputorder=reverse`
+  (the same thing the Chrome / macOS print path does by default — raw
+  `lp` does not). Controlled by `reverse_page_order` in the settings
+  file, default on. See [Appendix A](#appendix-a-page-ordering-rationale).
+  *(History: this was originally assumed to be the printer's own default
+  behaviour and left non-configurable; a real print test showed raw `lp`
+  delivers front-to-back, so the app now sets `outputorder` explicitly.)*
 - **Short-edge flip (fixed assumption).** The user flips the stack about
   the short edge and re-inserts it. No back-side rotation is applied — the
   user manages sheet orientation themselves. Also not configurable in v1.
@@ -358,19 +362,19 @@ pass's pages, in list order, then prints that file with the existing
   multi-poll grace period as the current app.
 - **Completion of the whole flow** = Pass 2 terminal success.
 
-### 7.4 Fixed printer assumptions
+### 7.4 Printer assumptions
 
-Not settings — hard-coded for v1, matching the owner's setup:
+Mostly hard-coded for v1, matching the owner's setup:
 
 | Assumption | Value | Effect |
 |---|---|---|
-| Printer reverses PDF page order on output | yes | Pass page lists are sent ascending; the printer + flip do the ordering. See [Appendix A](#appendix-a-page-ordering-rationale). |
+| Output order | reversed, via `lp -o outputorder=reverse` | Pass page lists are sent ascending; CUPS reverses the delivered order so the stack collates with the flip. See [Appendix A](#appendix-a-page-ordering-rationale). **Setting** `reverse_page_order`, default `true`. |
 | Flip edge | short | Wording of the flip instruction only. |
 | Back-side rotation | none | Pass-2 pages are sent unrotated. |
 | Scaling | none | `lp` gets no `fit-to-page`. |
 
-The only tunable value is `confidence_threshold` (default **0.70**) for
-smart cover detection; it lives in the settings file, not the main window.
+Settings-file values (no UI): `confidence_threshold` (default **0.70**)
+for smart cover detection, and `reverse_page_order` (default **true**).
 
 ---
 
@@ -464,7 +468,8 @@ From the revision-0.1 review (2026-09-01):
 | Q12 | PDF library for text / render. | `pymupdf`. |
 | Q13 | Run the Drive corpus analysis now? | Done — see [cover_signals.md](cover_signals.md). |
 | Q14 | Two-pass model correctness. | Confirmed by owner. |
-| — | `printer_reverses_output` / back-side rotation as settings? | Dropped — hard-coded for v1. |
+| — | Back-side rotation as a setting? | Dropped — hard-coded for v1. |
+| — | Page-reversal as a setting? | Originally dropped; **reinstated** after a real print test (2026-09-01) showed raw `lp` delivers front-to-back. Now `reverse_page_order` in the settings file, default `true`, applied via `lp -o outputorder=reverse`. |
 
 No open questions remain.
 
@@ -473,8 +478,10 @@ No open questions remain.
 ## Appendix A: page-ordering rationale
 
 This traces *why* "EVEN ascending, then flip, then ODD ascending, blank
-last in the EVEN job" produces reading order, given the printer emits PDF
-pages last-page-first (a fixed v1 assumption).
+last in the EVEN job" produces reading order, given pages are delivered
+last-page-first — which the app forces with `lp -o outputorder=reverse`
+(setting `reverse_page_order`, default on) rather than relying on the
+printer's own default.
 
 Notation: a sheet is written `front / back`; a stack is listed top → bottom.
 

@@ -97,9 +97,16 @@ def submit(
     copies: int = 1,
     two_sided: bool = False,
     fit_to_page: bool = False,
+    reverse_order: bool = True,
     title: str | None = None,
 ) -> str:
-    """Queue ``path`` for printing and return the CUPS job id (``NAME-123``)."""
+    """Queue ``path`` for printing and return the CUPS job id (``NAME-123``).
+
+    ``reverse_order`` (default on) adds ``-o outputorder=reverse``: pages
+    are delivered last-to-first so a face-up output tray ends up collated
+    in reading order. This is the CUPS-level equivalent of what the
+    Chrome / macOS print path does by default; raw ``lp`` does not.
+    """
     cmd = ["lp"]
     if printer:
         cmd += ["-d", printer]
@@ -111,6 +118,8 @@ def submit(
         cmd += ["-o", "sides=two-sided-long-edge"]
     if fit_to_page:
         cmd += ["-o", "fit-to-page"]
+    if reverse_order:
+        cmd += ["-o", "outputorder=reverse"]
     cmd += [str(path)]
 
     out = _run(cmd)  # "request id is NAME-123 (1 file(s))"

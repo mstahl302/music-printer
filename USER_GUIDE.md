@@ -126,12 +126,19 @@ waiting for the flip:
 
 ## Notes and assumptions
 
-- **Fixed for this version:** the printer reverses PDF page order on
-  output, the flip is short-edge, no back-side rotation, and pages print
-  at 100 % (no scaling). These match the author's setup and aren't
-  configurable yet.
+- **Page order.** The app sends each pass in ascending page order and
+  tells CUPS to reverse the delivered order (`lp -o outputorder=reverse`),
+  so a face-up output tray ends up collated in reading order after the
+  flip. This is what Chrome and the macOS print dialog do for you by
+  default; printing raw with `lp` does not. It's on by default; if your
+  printouts come out in reverse reading order, set `reverse_page_order` to
+  `false` in `settings.json` (see below).
+- **Also fixed for this version:** short-edge flip, no back-side rotation,
+  and pages print at 100 % (no scaling).
 - **Settings and a log** are kept in
-  `~/Library/Application Support/Music Printer/`.
+  `~/Library/Application Support/Music Printer/`. `settings.json` holds
+  `reverse_page_order` and `confidence_threshold` (the smart-strip
+  cutoff) in addition to your last printer / folder / mode.
 
 ## See also
 
