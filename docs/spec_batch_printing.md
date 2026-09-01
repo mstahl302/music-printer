@@ -109,18 +109,22 @@ The main window carries the file list directly — no separate window, no
 mode.
 
 - **Strip Cover Sheet** dropdown (global) and **Printer** dropdown, as now.
-- **The list.** Each row:
+- **The list.** A bordered box with **alternating white / light-grey
+  rows** so it reads as a list even when empty (empty rows carry an "Add
+  PDFs to build your set…" hint). Each file row:
   - a **drag handle** (grippy, `⠿`) on the left edge — drag a row up or
     down to reorder.
-  - the **filename**.
+  - the **filename**, middle-truncated with `…` if long (the extension is
+    kept), so the remove control is always visible.
   - `N pages` — the effective page count (after cover strip). A file that
     can't be opened shows **⚠ Can't open this PDF** here instead.
-  - a **remove** control at the right edge — a small **red circle-X**
-    (`⊗`). No "OK" checkmark; a row that's fine just shows its page count.
+  - a **remove** control at the right edge — a small **red ×**. No "OK"
+    checkmark; a row that's fine just shows its page count.
   - No position numbers.
 - **Add PDFs…** — a normal open panel with multi-select; appends to the
   list.
-- The list shows about **6 rows**; beyond that the list area **scrolls**.
+- The box shows **6 rows**; beyond that it **scrolls** (scrollbar appears
+  only when needed).
 - **Preview** button — enabled when the list has at least one file **and
   no un-openable files**. An un-openable file blocks Preview until it is
   removed.

@@ -54,11 +54,28 @@ _PINK_BG, _PINK_FG = "#f2c7d6", "#8a2c4c"
 
 
 # ============================================================ file list
+def _elide(name: str, maxlen: int) -> str:
+    """Middle-truncate a filename, keeping the extension."""
+    if len(name) <= maxlen:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if dot and 0 < len(ext) <= 5:
+        keep = maxlen - len(ext) - 2
+        return f"{stem[:max(1, keep)]}….{ext}"
+    return name[:maxlen - 1] + "…"
+
+
 class FileList(ttk.Frame):
-    """Scrollable rows: drag handle, filename, page count / warning, remove."""
+    """Bordered, striped, scrollable list of file rows: drag handle,
+    (elided) filename, page count / warning, red remove button. Shows
+    empty placeholder rows so it reads as a list before anything is added."""
 
     VISIBLE = 6
-    ROW_PX = 34
+    ROW_PX = 32
+    WIDTH = 460
+    NAME_MAX = 40
+    STRIPE = ("#ffffff", "#f1f1f4")
+    HINT = "  Add PDFs to build your set…"
 
     def __init__(self, parent, *, on_change) -> None:
         super().__init__(parent)
@@ -67,22 +84,33 @@ class FileList(ttk.Frame):
         self._entry_by_path: dict[str, jobs.FileEntry] = {}
         self._drag_from: int | None = None
 
-        self._canvas = tk.Canvas(self, highlightthickness=0, height=self.ROW_PX * self.VISIBLE)
-        self._sb = ttk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
-        self._inner = ttk.Frame(self._canvas)
-        self._winid = self._canvas.create_window((0, 0), window=self._inner, anchor="nw")
-        self._canvas.configure(yscrollcommand=self._sb.set)
-        self._canvas.grid(row=0, column=0, sticky="nsew")
-        self._sb.grid(row=0, column=1, sticky="ns")
+        wrap = tk.Frame(self, bd=1, relief="solid", bg=self.STRIPE[0])
+        wrap.grid(row=0, column=0, sticky="nsew")
+        wrap.rowconfigure(0, weight=1)
+        wrap.columnconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
-        try:
-            self._canvas.configure(bg=ttk.Style().lookup("TFrame", "background") or None)
-        except tk.TclError:
-            pass
+
+        self._canvas = tk.Canvas(wrap, highlightthickness=0, bd=0, bg=self.STRIPE[0],
+                                 width=self.WIDTH, height=self.ROW_PX * self.VISIBLE)
+        self._sb = ttk.Scrollbar(wrap, orient="vertical", command=self._canvas.yview)
+        self._inner = tk.Frame(self._canvas, bg=self.STRIPE[0])
+        self._winid = self._canvas.create_window((0, 0), window=self._inner, anchor="nw")
+        self._canvas.configure(yscrollcommand=self._on_scroll)
+        self._canvas.grid(row=0, column=0, sticky="nsew")
         self._inner.bind("<Configure>",
                          lambda _e: self._canvas.configure(scrollregion=self._canvas.bbox("all")))
         self._canvas.bind("<Configure>",
                           lambda e: self._canvas.itemconfigure(self._winid, width=e.width))
+        self._inner.columnconfigure(0, weight=1)
+        self._render()
+
+    def _on_scroll(self, lo, hi) -> None:
+        full = float(lo) <= 0.0 and float(hi) >= 1.0
+        if full:
+            self._sb.grid_remove()
+        else:
+            self._sb.grid(row=0, column=1, sticky="ns")
+        self._sb.set(lo, hi)
 
     def set_files(self, files) -> None:
         self.files = list(files)
@@ -101,31 +129,43 @@ class FileList(ttk.Frame):
     def _render(self) -> None:
         for w in self._inner.winfo_children():
             w.destroy()
-        for i, path in enumerate(self.files):
-            row = ttk.Frame(self._inner, padding=(6, 5))
+        n_rows = max(len(self.files), self.VISIBLE)
+        for i in range(n_rows):
+            stripe = self.STRIPE[i % 2]
+            row = tk.Frame(self._inner, bg=stripe, height=self.ROW_PX)
             row.grid(row=i, column=0, sticky="ew")
+            row.grid_propagate(False)
             row.columnconfigure(1, weight=1)
-            row._path = path  # type: ignore[attr-defined]
+            if i < len(self.files):
+                self._fill_row(row, i, stripe)
+            elif i == 0:
+                tk.Label(row, text=self.HINT, bg=stripe, fg="#9a9a9a", anchor="w").grid(
+                    row=0, column=0, columnspan=4, sticky="w")
 
-            grip = ttk.Label(row, text="⠿", cursor="fleur")
-            grip.grid(row=0, column=0, padx=(0, 8))
-            grip.bind("<ButtonPress-1>", lambda _e, idx=i: self._drag_start(idx))
-            grip.bind("<ButtonRelease-1>", self._drag_drop)
+    def _fill_row(self, row, i: int, stripe: str) -> None:
+        path = self.files[i]
+        row._path = path  # type: ignore[attr-defined]
 
-            ttk.Label(row, text=path.name, anchor="w").grid(row=0, column=1, sticky="ew")
+        grip = tk.Label(row, text="⠿", bg=stripe, fg="#9a9a9a", cursor="fleur")
+        grip.grid(row=0, column=0, padx=(7, 8))
+        grip.bind("<ButtonPress-1>", lambda _e, idx=i: self._drag_start(idx))
+        grip.bind("<ButtonRelease-1>", self._drag_drop)
 
-            e = self._entry_by_path.get(str(path))
-            if e is None:
-                info = ttk.Label(row, text="…", foreground="#888")
-            elif e.error:
-                info = ttk.Label(row, text=f"⚠ {e.error}", foreground="#b23")
-            else:
-                info = ttk.Label(row, text=f"{e.n_effective} pages", foreground="#888")
-            info.grid(row=0, column=2, padx=8)
+        tk.Label(row, text=_elide(path.name, self.NAME_MAX), bg=stripe, anchor="w").grid(
+            row=0, column=1, sticky="ew")
 
-            rm = widgets.button(row, "×", widgets.RED, lambda p=path: self._remove(p))
-            rm.configure(padx=7, pady=1, font=("TkDefaultFont", 11))
-            rm.grid(row=0, column=3)
+        e = self._entry_by_path.get(str(path))
+        if e is None:
+            txt, fg = "…", "#888"
+        elif e.error:
+            txt, fg = f"⚠ {e.error}", "#b23"
+        else:
+            txt, fg = f"{e.n_effective} pages", "#888"
+        tk.Label(row, text=txt, bg=stripe, fg=fg).grid(row=0, column=2, padx=8)
+
+        rm = widgets.button(row, "×", widgets.RED, lambda p=path: self._remove(p))
+        rm.configure(padx=6, pady=0, font=("TkDefaultFont", 11))
+        rm.grid(row=0, column=3, padx=(0, 7))
 
     def _remove(self, path: Path) -> None:
         self.files = [p for p in self.files if p != path]
@@ -144,7 +184,7 @@ class FileList(ttk.Frame):
         w = self.winfo_containing(event.x_root, event.y_root)
         while w is not None and getattr(w, "_path", None) is None:
             w = getattr(w, "master", None)
-        rows = self._inner.winfo_children()
+        rows = [r for r in self._inner.winfo_children() if getattr(r, "_path", None) is not None]
         dst = rows.index(w) if w in rows else src
         if dst != src:
             p = self.files.pop(src)
