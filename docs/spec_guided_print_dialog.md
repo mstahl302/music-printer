@@ -1,7 +1,7 @@
 # Feature Spec — Guided Print Dialog
 
 **Feature:** #1 in [feature_requests.md](feature_requests.md)
-**Status:** DRAFT — for review. Not approved, not scheduled.
+**Status:** IMPLEMENTED — shipped 2026-09-01 (rev 2, review round 1 applied).
 **Date:** 2026-09-01 · rev 2 (review round 1 applied)
 **Companion artifact:** <https://claude.ai/code/artifact/567bce24-6513-414a-9d9b-2d051a729307>
 — mark it up line by line there; this file stays the source of truth and is kept in sync.

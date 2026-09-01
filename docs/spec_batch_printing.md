@@ -1,7 +1,7 @@
 # Feature Spec — Set-List Printing
 
 **Feature:** #2 in [feature_requests.md](feature_requests.md)
-**Status:** APPROVED — implemented (rev 2, approved and built 2026-09-01)
+**Status:** IMPLEMENTED — shipped 2026-09-01 (rev 2).
 **Date:** 2026-09-01
 **Companion artifact:** <https://claude.ai/code/artifact/c0981c44-4fc5-4f34-bce0-ffac9b3aefef>
 — mark it up line by line there; this file stays the source of truth and is kept in sync.
