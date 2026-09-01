@@ -22,11 +22,11 @@ its own design pass (and, where it touches printing behavior, an update to
 
 ## Top priority
 
-The two features most worth building next.
+Both **built** — kept here for provenance.
 
 ### 1. Guided-print dialog with a louder flip cue
 
-> Full spec: [spec_guided_print_dialog.md](spec_guided_print_dialog.md) (draft, for review).
+> ✅ **Built.** Spec: [spec_guided_print_dialog.md](spec_guided_print_dialog.md).
 
 Replace the inline progress strip and flip panel with a dedicated **print
 dialog** that opens when the user clicks Start: a busy/progress bar and a
@@ -47,7 +47,8 @@ loud, big-target, colour-coded cue matches how much the moment matters.
 
 ### 2. Batch / set-list printing
 
-> Full spec: [spec_batch_printing.md](spec_batch_printing.md) (draft, for review).
+> ✅ **Built.** Spec: [spec_batch_printing.md](spec_batch_printing.md). The app
+> is now multi-file-native; a list of one is the everyday case.
 
 Let the user select **multiple PDFs**, arrange them in set-list order (the
 order a choir or worship service will actually sing them), preview the
