@@ -55,18 +55,46 @@ _PINK_BG, _PINK_FG = "#f2c7d6", "#8a2c4c"
 
 # ============================================================ file list
 _WHEEL_SEQS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+_SCROLL_KEYS = {"Up": (-1, "units"), "Down": (1, "units"),
+                "Prior": (-1, "pages"), "Next": (1, "pages")}
 
 
-def _wheel_scroll(canvas, e) -> str:
-    """Scroll ``canvas`` for one wheel/trackpad event, only when it overflows.
+def bind_region_scroll(canvas) -> None:
+    """Make wheel / trackpad / arrow keys scroll ``canvas`` whenever the pointer
+    is anywhere over it.
 
-    Bound directly on the scrollable widgets (a `bind_all` on <Enter>/<Leave>
-    never fires on macOS because the inner frame covers the canvas)."""
-    bb = canvas.bbox("all")
-    if not bb or bb[3] - bb[1] <= canvas.winfo_height():
+    On macOS Aqua neither a per-widget ``<MouseWheel>`` bind (events don't bubble
+    to the covered canvas) nor ``bind_all`` gated on ``<Enter>``/``<Leave>`` (the
+    inner frame masks the canvas so those never fire) works. Binding on the
+    *toplevel* does: its window path sits in every descendant's bindtags, so the
+    handler sees wheel/key events over any child, and it dies with the window."""
+    top = canvas.winfo_toplevel()
+    handler = lambda e: _region_scroll(canvas, e)
+    for seq in (*_WHEEL_SEQS, *(f"<KeyPress-{k}>" for k in _SCROLL_KEYS)):
+        top.bind(seq, handler, add="+")
+
+
+def _region_scroll(canvas, e):
+    """Scroll ``canvas`` for one wheel/key event, but only when the pointer is
+    over it and it actually overflows. Returns ``"break"`` when it handled the
+    event, ``None`` to let other bindings run."""
+    try:
+        if not canvas.winfo_ismapped():
+            return None
+        x, y = canvas.winfo_rootx(), canvas.winfo_rooty()
+        w, h = canvas.winfo_width(), canvas.winfo_height()
+        if not (x <= e.x_root < x + w and y <= e.y_root < y + h):
+            return None
+        bb = canvas.bbox("all")
+    except tk.TclError:
+        return None
+    if not bb or bb[3] - bb[1] <= h:
         return "break"
+    key = getattr(e, "keysym", "")
     num = getattr(e, "num", 0)
-    if num == 4:
+    if key in _SCROLL_KEYS:
+        canvas.yview_scroll(*_SCROLL_KEYS[key])
+    elif num == 4:
         canvas.yview_scroll(-2, "units")
     elif num == 5:
         canvas.yview_scroll(2, "units")
@@ -75,19 +103,6 @@ def _wheel_scroll(canvas, e) -> str:
         step = max(-4, min(4, step)) or (-1 if e.delta >= 0 else 1)
         canvas.yview_scroll(step, "units")
     return "break"
-
-
-def _bind_scroll_tree(widget, canvas, *, focus_target=None) -> None:
-    """Bind wheel scrolling on ``widget`` and every current descendant."""
-    handler = lambda e: _wheel_scroll(canvas, e)
-    stack = [widget]
-    while stack:
-        w = stack.pop()
-        for seq in _WHEEL_SEQS:
-            w.bind(seq, handler, add="+")
-        if focus_target is not None:
-            w.bind("<Button-1>", lambda _e: focus_target.focus_set(), add="+")
-        stack.extend(w.winfo_children())
 
 
 def _elide(name: str, maxlen: int) -> str:
@@ -142,25 +157,8 @@ class FileList(ttk.Frame):
 
         self._drop_line = tk.Frame(self._inner, height=2, bg="#1a1a1a")  # drag indicator
 
-        self._canvas.configure(takefocus=True)
-        for w in (self._canvas, self._inner):
-            for seq in _WHEEL_SEQS:
-                w.bind(seq, lambda e: _wheel_scroll(self._canvas, e), add="+")
-        for seq in ("<Up>", "<Down>", "<Prior>", "<Next>"):
-            self._canvas.bind(seq, self._arrow, add="+")
-        self._canvas.bind("<Button-1>", lambda _e: self._canvas.focus_set(), add="+")
+        bind_region_scroll(self._canvas)
         self._render()
-
-    # ---- keyboard scrolling (wheel is bound per-row in _render) ----
-    def _arrow(self, e):
-        bb = self._canvas.bbox("all")
-        if not bb or bb[3] - bb[1] <= self._canvas.winfo_height():
-            return
-        move = {"Up": (-1, "units"), "Down": (1, "units"),
-                "Prior": (-1, "pages"), "Next": (1, "pages")}.get(e.keysym)
-        if move:
-            self._canvas.yview_scroll(*move)
-            return "break"
 
     def _on_scroll(self, lo, hi) -> None:
         full = float(lo) <= 0.0 and float(hi) >= 1.0
@@ -201,7 +199,6 @@ class FileList(ttk.Frame):
             elif i == 0:
                 tk.Label(row, text=self.HINT, bg=stripe, fg="#9a9a9a", anchor="w").grid(
                     row=0, column=0, columnspan=4, sticky="w")
-            _bind_scroll_tree(row, self._canvas, focus_target=self._canvas)
 
     def _fill_row(self, row, i: int, stripe: str) -> None:
         path = self.files[i]
@@ -325,9 +322,7 @@ class PreviewDialog(tk.Toplevel):
             canvas.configure(bg=ttk.Style().lookup("TFrame", "background") or None)
         except tk.TclError:
             pass
-        for seq in _WHEEL_SEQS:
-            canvas.bind(seq, lambda e: _wheel_scroll(canvas, e), add="+")
-            body.bind(seq, lambda e: _wheel_scroll(canvas, e), add="+")
+        bind_region_scroll(canvas)
 
         layout = setplan.layout
         for i, e in enumerate(setplan.ok_entries):
@@ -350,8 +345,6 @@ class PreviewDialog(tk.Toplevel):
             sheets = layout.file_sheets(i) if layout else 0
             ttk.Label(line, text=f"{e.n_effective} pages · {sheets} sheets",
                       foreground="#777").grid(row=0, column=col)
-
-        _bind_scroll_tree(body, canvas)
 
         bar = ttk.Frame(frm, padding=(0, 14, 0, 0))
         bar.grid(row=1, column=0, columnspan=2, sticky="ew")
