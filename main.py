@@ -2,23 +2,26 @@
 """Music Printer — Tkinter front-end and two-pass state machine.
 
 Pick a printer and a PDF, choose how to handle a vendor cover sheet, hit
-Start. The app prints the EVEN pages, waits for the printer, asks you to
-flip the stack, then prints the ODD pages onto the backs. See
-docs/specification.md.
+Start. A modal run dialog then owns the run: it prints the EVEN pages,
+waits for the printer, asks you to flip the stack (short edge), and prints
+the ODD pages onto the backs. See docs/specification.md and
+docs/spec_guided_print_dialog.md.
 """
 
 from __future__ import annotations
 
 import base64
+import os
 import queue
 import shutil
+import subprocess
 import tempfile
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from musicprinter import jobs, printing, settings
+from musicprinter import jobs, printing, rundialog, settings
 from musicprinter.pdfio import PdfError
 
 # UI label  ->  strip mode
@@ -30,6 +33,11 @@ COVER_MODES = {
 MODE_TO_LABEL = {v: k for k, v in COVER_MODES.items()}
 DEFAULT_COVER_LABEL = "Smart Strip (remove if detected)"
 
+FLIP_SOUND = "/System/Library/Sounds/Ping.aiff"
+
+# how often to poll CUPS for job status (ms) — lowered by the test suite
+_POLL_MS = max(20, int(os.environ.get("MUSIC_PRINTER_POLL_MS", "700")))
+
 # state machine
 READY = "ready"
 PRINTING_PASS1 = "printing_pass1"
@@ -40,6 +48,13 @@ DONE = "done"
 DONE_ERROR = "done_error"
 
 _PRINTING = {PRINTING_PASS1, PRINTING_PASS2, PRINTING_SINGLE}
+
+_PASS_HEADING = {
+    "even": "Printing — pass 1 of 2",
+    "odd": "Printing — pass 2 of 2",
+    "single": "Printing",
+}
+_PASS_SIDE = {"even": "Even pages", "odd": "Odd pages", "single": "Pages"}
 
 
 class App(tk.Tk):
@@ -55,9 +70,10 @@ class App(tk.Tk):
 
         # inputs
         self.printer = tk.StringVar(value=self.cfg["last_printer"])  # real CUPS queue name
-        self.printer_display = tk.StringVar(value="")                # friendly text shown on the button
+        self.printer_display = tk.StringVar(value="")                # friendly text on the button
         self._printers: dict[str, printing.Printer] = {}
-        self.cover_label = tk.StringVar(value=MODE_TO_LABEL.get(self.cfg["strip_mode"], DEFAULT_COVER_LABEL))
+        self.cover_label = tk.StringVar(
+            value=MODE_TO_LABEL.get(self.cfg["strip_mode"], DEFAULT_COVER_LABEL))
         self.source_path: Path | None = None
 
         # derived
@@ -67,14 +83,15 @@ class App(tk.Tk):
 
         # run state
         self.state = READY
+        self.dialog: rundialog.RunDialog | None = None
         self._job_id: str | None = None
         self._gone_polls = 0
         self._canceling = False
+        self._pass: str = ""
 
-        # display vars
+        # main-window display
         self.printer_warn = tk.StringVar(value="")
         self.preview_text = tk.StringVar(value="Choose a printer and a PDF.")
-        self.status = tk.StringVar(value="")
 
         self._build()
         self._load_printers()
@@ -116,29 +133,8 @@ class App(tk.Tk):
         self.start_btn = ttk.Button(frm, text="Start", command=self._start)
         self.start_btn.grid(row=5, column=0, columnspan=3, **pad)
 
-        # flip prompt (shown only in WAIT_FOR_FLIP)
-        self.flip_frame = ttk.LabelFrame(frm, text="Flip the stack", padding=10)
-        self.flip_frame.grid(row=6, column=0, columnspan=3, sticky="ew", **pad)
-        ttk.Label(
-            self.flip_frame, justify="left", wraplength=380,
-            text=("Pass 1 is done. Take the printed stack out, flip it about the "
-                  "SHORT edge, and put it back in the tray. Then click below."),
-        ).grid(row=0, column=0, sticky="w")
-        ttk.Button(self.flip_frame, text="Pages are flipped — print pass 2",
-                   command=self._start_pass2).grid(row=1, column=0, pady=(8, 0))
-        self.flip_frame.grid_remove()
-
-        self.progress = ttk.Progressbar(frm, mode="indeterminate", length=380)
-        self.progress.grid(row=7, column=0, columnspan=3, sticky="ew", **pad)
-        self.progress.grid_remove()
-        ttk.Label(frm, textvariable=self.status, foreground="#555").grid(
-            row=8, column=0, columnspan=3, sticky="w", padx=10)
-
-        self.cancel_btn = ttk.Button(frm, text="Cancel", command=self._cancel, state="disabled")
-        self.cancel_btn.grid(row=9, column=0, columnspan=3, **pad)
-
         self.another_btn = ttk.Button(frm, text="Print another", command=self._reset)
-        self.another_btn.grid(row=10, column=0, columnspan=3, **pad)
+        self.another_btn.grid(row=5, column=0, columnspan=3, **pad)
         self.another_btn.grid_remove()
 
         self._set_state(READY)
@@ -158,7 +154,8 @@ class App(tk.Tk):
             menu.add_command(label=label, command=lambda n=p.name: self._choose_printer(n))
         names = [p.name for p in printers]
         if self.printer.get() not in names:
-            default = next((p.name for p in printers if p.is_default), names[0] if names else "")
+            default = next((p.name for p in printers if p.is_default),
+                           names[0] if names else "")
             self.printer.set(default)
         self._sync_printer_display()
         self._check_printer()
@@ -171,7 +168,6 @@ class App(tk.Tk):
         self._check_printer()
 
     def _sync_printer_display(self) -> None:
-        """Keep the OptionMenu button showing the friendly name, not the raw queue name."""
         p = self._printers.get(self.printer.get())
         if p is None:
             self.printer_display.set(self.printer.get())
@@ -210,15 +206,16 @@ class App(tk.Tk):
         self.preview_text.set("Reading PDF…")
         self._set_thumb(None)
         self._set_state(READY)
-        threading.Thread(target=self._plan_worker, args=(token, self.source_path,
-                         self.cfg["strip_mode"], float(self.cfg["confidence_threshold"])),
-                         daemon=True).start()
+        threading.Thread(
+            target=self._plan_worker,
+            args=(token, self.source_path, self.cfg["strip_mode"],
+                  float(self.cfg["confidence_threshold"])),
+            daemon=True).start()
 
     def _plan_worker(self, token: int, path: Path, mode: str, threshold: float) -> None:
         try:
             plan = jobs.build_plan(path, mode, threshold=threshold)
             self._q.put(("plan", token, plan))
-            png = None
             try:
                 from musicprinter import pdfio
                 png = pdfio.render_thumbnail_png(path, plan.thumbnail_source_index0)
@@ -259,32 +256,40 @@ class App(tk.Tk):
 
     # ================================================================ run
     def _start(self) -> None:
-        if self.plan is None or not self.printer.get():
+        if self.plan is None or not self.printer.get() or self.dialog is not None:
             return
         self._check_printer()
         if self.printer_warn.get() and not messagebox.askyesno(
                 "Printer paused", f"{self.printer_warn.get()}\n\nQueue the job anyway?"):
             return
+
+        self.dialog = rundialog.RunDialog(
+            self, run_title=f"Printing — {self.source_path.name}",
+            on_cancel=self._cancel, on_continue=self._start_pass2,
+            on_close=self._close_dialog)
+        self.dialog.show_phase(rundialog.PREPARING, detail="Building pass 1…")
+
         if self.plan.passes.single_pass:
-            self._begin_pass("single", PRINTING_SINGLE, "Printing (single page)…")
+            self._begin_pass("single", PRINTING_SINGLE)
         else:
-            self._begin_pass("even", PRINTING_PASS1, "Printing pass 1 of 2 (even pages)…")
+            self._begin_pass("even", PRINTING_PASS1)
 
     def _start_pass2(self) -> None:
-        self._begin_pass("odd", PRINTING_PASS2, "Printing pass 2 of 2 (odd pages)…")
+        self._begin_pass("odd", PRINTING_PASS2)
 
-    def _begin_pass(self, which: str, state: str, status: str) -> None:
+    def _begin_pass(self, which: str, state: str) -> None:
         self._canceling = False
         self._job_id = None
         self._gone_polls = 0
+        self._pass = which
         self._set_state(state)
-        self.status.set(status)
-        self.progress.grid()
-        self.progress.start(12)
-        # Read Tk vars here on the main thread; the worker must not touch Tk.
-        threading.Thread(target=self._submit_worker,
-                         args=(which, self.plan, self.printer.get()),
-                         daemon=True).start()
+        if self.dialog:
+            self.dialog.show_phase(rundialog.PRINTING, heading=_PASS_HEADING[which],
+                                   detail="Sending…")
+        threading.Thread(
+            target=self._submit_worker,
+            args=(which, self.plan, self.printer.get()),
+            daemon=True).start()
 
     def _submit_worker(self, which: str, plan: "jobs.Plan", printer_name: str) -> None:
         try:
@@ -298,6 +303,11 @@ class App(tk.Tk):
         except Exception as exc:
             self._q.put(("submit_err", which, exc))
 
+    def _detail(self, word: str) -> None:
+        if self.dialog:
+            self.dialog.set_detail(f"{_PASS_SIDE.get(self._pass, 'Pages')} · {word} · "
+                                   f"job {self._job_id}")
+
     def _poll_job(self) -> None:
         if self.state not in _PRINTING or not self._job_id:
             return
@@ -306,13 +316,13 @@ class App(tk.Tk):
         except Exception as exc:
             self._finish_pass_failed(f"Lost track of the job: {exc}")
             return
-        delay = 400 if self._canceling else 700
+        delay = _POLL_MS // 2 if self._canceling else _POLL_MS
         if st == "processing":
-            self.status.set(f"Printing… — job {self._job_id}")
+            self._detail("printing")
             self.after(delay, self._poll_job)
         elif st == "queued":
-            self.status.set(f"Waiting in the printer queue — job {self._job_id}")
-            self.after(400 if self._canceling else 1000, self._poll_job)
+            self._detail("in the printer queue")
+            self.after(delay, self._poll_job)
         elif st == "canceled" or (self._canceling and st in ("completed", "gone")):
             self._finish_pass_canceled()
         elif st == "aborted":
@@ -329,55 +339,54 @@ class App(tk.Tk):
     # ---- pass outcomes ------------------------------------------------
     def _finish_pass_ok(self) -> None:
         settings.log(f"pass ok state={self.state} job={self._job_id}")
-        self.progress.stop()
-        self.progress.grid_remove()
         self._job_id = None
         if self.state == PRINTING_PASS1:
             self._set_state(WAIT_FOR_FLIP)
-            self.status.set("Pass 1 finished. Flip the stack and continue.")
+            if self.dialog:
+                self.dialog.show_phase(rundialog.FLIP)
+                self.dialog.bring_forward()
+            self._play_flip_cue()
         else:  # PASS2 or SINGLE
             self._set_state(DONE)
-            self.status.set("✅ Done — double-sided copy printed.")
-            messagebox.showinfo("Done", "Double-sided copy printed.")
+            if self.dialog:
+                self.dialog.show_phase(rundialog.DONE, detail="Double-sided copy printed.")
 
     def _finish_pass_canceled(self) -> None:
         settings.log(f"pass canceled state={self.state} job={self._job_id}")
-        self.progress.stop()
-        self.progress.grid_remove()
+        was_pass2 = self.state == PRINTING_PASS2
         self._job_id = None
-        if self.state == PRINTING_PASS2:
-            self._set_state(DONE_ERROR)
-            self.status.set(f"🚫 Cancelled during pass 2 — job {self._job_id}.")
-            messagebox.showwarning(
-                "Cancelled",
-                "Pass 2 was cancelled. Some sheets are printed on one side only.")
-        else:
-            self._set_state(READY)
-            self.status.set("🚫 Cancelled.")
+        self._set_state(DONE_ERROR if was_pass2 else READY)
+        if self.dialog:
+            detail = ("Some sheets are printed on one side only, and there may be "
+                      "back-printed sheets still in the printer's feed tray — pull "
+                      "those out before the next job.") if was_pass2 else ""
+            self.dialog.show_phase(rundialog.CANCELLED, detail=detail)
 
     def _finish_pass_failed(self, message: str) -> None:
         settings.log(f"pass failed state={self.state}: {message}")
-        self.progress.stop()
-        self.progress.grid_remove()
         self._job_id = None
         was_pass2 = self.state == PRINTING_PASS2
         self._set_state(DONE_ERROR if was_pass2 else READY)
-        self.status.set(f"⚠️ {message}")
-        messagebox.showerror("Printing", message)
+        if self.dialog:
+            self.dialog.show_phase(rundialog.FAILED, detail=message)
+        else:
+            messagebox.showerror("Printing", message)
 
     # ---- cancel -----------------------------------------------------
     def _cancel(self) -> None:
         if self.state == WAIT_FOR_FLIP:
             if messagebox.askyesno(
                     "Stop here?",
-                    "Pass 1 sheets are already printed. Discard this file and start over?"):
+                    "Pass 1 sheets are already printed. Discard this and start over?"):
                 self._set_state(READY)
-                self.status.set("Stopped after pass 1.")
+                if self.dialog:
+                    self.dialog.show_phase(rundialog.CANCELLED, detail="")
             return
         if self.state in _PRINTING and self._job_id:
             self._canceling = True
-            self.cancel_btn.config(state="disabled")
-            self.status.set(f"Cancelling job {self._job_id}…")
+            if self.dialog:
+                self.dialog.disable_cancel()
+                self.dialog.set_detail(f"Cancelling job {self._job_id}…")
             threading.Thread(target=self._cancel_worker, args=(self._job_id,),
                              daemon=True).start()
 
@@ -388,7 +397,18 @@ class App(tk.Tk):
         except Exception as exc:
             self._q.put(("cancel_err", exc))
 
-    # ---- reset ----------------------------------------------------
+    # ---- dialog close / reset ------------------------------------
+    def _close_dialog(self) -> None:
+        if self.dialog:
+            self.dialog.close()
+            self.dialog = None
+        if self.state in (DONE, DONE_ERROR):
+            self.preview_text.set("Done — printed." if self.state == DONE
+                                  else "Stopped — some sheets are one-sided.")
+            self._set_state(self.state)
+        else:
+            self._set_state(READY)
+
     def _reset(self) -> None:
         self._cleanup_tmp()
         self.source_path = None
@@ -398,8 +418,19 @@ class App(tk.Tk):
         self.file_label.config(text="No file chosen")
         self.preview_text.set("Choose a PDF.")
         self._set_thumb(None)
-        self.status.set("")
         self._set_state(READY)
+
+    def _play_flip_cue(self) -> None:
+        if os.environ.get("MUSIC_PRINTER_NO_SOUND"):
+            return
+        try:
+            subprocess.Popen(["afplay", FLIP_SOUND],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            try:
+                self.bell()
+            except tk.TclError:
+                pass
 
     # =========================================================== plumbing
     def _pump(self) -> None:
@@ -428,39 +459,33 @@ class App(tk.Tk):
                 self._set_thumb(None)
                 self._set_state(READY)
         elif kind == "submitted":
-            which, job_id = rest
+            _which, job_id = rest
             self._job_id = job_id
             self._gone_polls = 0
-            self.status.set(f"Queued — job {job_id}")
-            self.after(700, self._poll_job)
+            self._detail("queued")
+            self.after(_POLL_MS, self._poll_job)
         elif kind == "submit_err":
             which, exc = rest
             self._finish_pass_failed(f"Could not send the {which} pass: {exc}")
         elif kind == "cancel_err":
             (exc,) = rest
             self._canceling = False
-            self.cancel_btn.config(state="normal")
-            self.status.set(f"Could not cancel: {exc}")
-            messagebox.showerror("Cancel", str(exc))
+            if self.dialog:
+                self.dialog.enable_cancel()
+                self.dialog.set_detail(f"Couldn't cancel — {exc}. Try again.")
         # "cancel_ok" needs no action — _poll_job sees the terminal state
 
     def _set_state(self, state: str) -> None:
         self.state = state
-        printing_now = state in _PRINTING
-        inputs = "disabled" if state != READY else "normal"
+        inputs = "normal" if state == READY else "disabled"
         self.printer_menu.config(state=inputs)
         self.cover_menu.config(state=inputs)
 
         start_ok = state == READY and self.plan is not None and bool(self.printer.get())
         self.start_btn.config(state="normal" if start_ok else "disabled")
-        self.start_btn.grid() if state == READY else self.start_btn.grid_remove()
-
-        self.flip_frame.grid() if state == WAIT_FOR_FLIP else self.flip_frame.grid_remove()
-
-        cancel_ok = printing_now or state == WAIT_FOR_FLIP
-        self.cancel_btn.config(state="normal" if cancel_ok else "disabled")
-
-        self.another_btn.grid() if state in (DONE, DONE_ERROR) else self.another_btn.grid_remove()
+        (self.start_btn.grid if state == READY else self.start_btn.grid_remove)()
+        (self.another_btn.grid if state in (DONE, DONE_ERROR)
+         else self.another_btn.grid_remove)()
 
     # ============================================================= close
     def _cleanup_tmp(self) -> None:
@@ -471,10 +496,15 @@ class App(tk.Tk):
                 pass
 
     def _on_close(self) -> None:
-        if self._job_id and self._canceling is False and self.state in _PRINTING:
+        if self._job_id and not self._canceling and self.state in _PRINTING:
             try:
                 printing.cancel(self._job_id)
             except Exception:
+                pass
+        if self.dialog:
+            try:
+                self.dialog.close()
+            except tk.TclError:
                 pass
         shutil.rmtree(self._tmpdir, ignore_errors=True)
         self.destroy()

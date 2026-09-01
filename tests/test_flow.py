@@ -134,3 +134,71 @@ def test_odd_effective_count_pads_pass1(tmp_path, monkeypatch, no_dialogs):
     app._start_pass2()
     _pump(app, lambda: app.state == main.DONE)
     app._on_close()
+
+
+# ---- the run dialog ------------------------------------------------
+
+def test_dialog_tracks_phases(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    pdf = _write(tmp_path / "c.pdf", cover=True, music_pages=4)
+    app = _app_with(monkeypatch, fake, pdf)
+
+    app._start()
+    assert app.dialog is not None
+    _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
+    assert app.dialog.phase == "flip"
+
+    app._start_pass2()
+    _pump(app, lambda: app.state == main.DONE)
+    assert app.dialog.phase == "done"
+    assert app.dialog._primary_btn.cget("text") == "Close"
+
+    app._close_dialog()
+    assert app.dialog is None
+    assert app.state == main.DONE          # main window keeps "Print another"
+    app._on_close()
+
+
+def test_flip_cue_plays_ping(tmp_path, monkeypatch, no_dialogs):
+    monkeypatch.delenv("MUSIC_PRINTER_NO_SOUND", raising=False)
+    calls = []
+    monkeypatch.setattr(main.subprocess, "Popen",
+                        lambda cmd, **kw: calls.append(cmd) or _Dummy())
+
+    fake = FakePrinting(["completed"])
+    pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
+    app = _app_with(monkeypatch, fake, pdf)
+    app._start()
+    _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
+
+    assert calls == [["afplay", main.FLIP_SOUND]]
+    app._on_close()
+
+
+def test_cancel_during_pass2_warns_about_feed_tray(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
+    app = _app_with(monkeypatch, fake, pdf)
+
+    app._start()
+    _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
+
+    fake.statuses = ["processing"]
+    fake._n = 0
+    app._start_pass2()
+    _pump(app, lambda: app.state == main.PRINTING_PASS2 and app._job_id is not None)
+
+    fake.statuses = ["canceled"]
+    fake._n = 0
+    app._cancel()
+    _pump(app, lambda: app.state == main.DONE_ERROR)
+
+    assert app.dialog.phase == "cancelled"
+    assert "feed tray" in app.dialog._detail.cget("text")
+    assert fake.canceled == ["FAKE-2"]
+    app._on_close()
+
+
+class _Dummy:
+    def poll(self):
+        return 0
