@@ -88,16 +88,20 @@ Dock-icon bounce is out of scope for this spec — tracked as an idea in
 
 ### 3.3 Buttons and colour
 
-- **Primary** — filled accent, bottom-right, bound to `<Return>`. It is
-  *Continue — print the back side* at the flip, and **Close** at every
-  terminal state (Done, cancelled, failed) — Close just dismisses the
-  dialog.
-- **Cancel print** — destructive, quiet: a text button, bottom-left,
-  showing the alert colour only on hover / focus. Present during
+- **Primary** — flat, filled, white text, bottom-right, bound to
+  `<Return>`. **Green** *Continue — print the back side* at the flip;
+  **blue** **Close** at every terminal state (Done, cancelled, failed) —
+  Close just dismisses the dialog.
+- **Cancel print** — a flat **red** button, bottom-left. Present during
   Preparing, Printing pass 1, Flip, and Printing pass 2.
 - **No "Close" during an active run** — mid-run the only actions are
   Continue (at the flip) and Cancel print. Close appears only once the
   run has reached a terminal state.
+- Buttons use flat `tk.Button`s with an explicit `background` (ttk on
+  macOS ignores button colour). Green `#2f8f4e`, red `#c0392b`, blue
+  `#2b5fb0`.
+- The indeterminate progress bar steps every ~55 ms (a bit slower than
+  the Tk default) so it reads as working, not frantic.
 - Destructive confirmations are unchanged (§4).
 
 ## 4. Behaviour
@@ -200,5 +204,7 @@ Resolved:
   dismisses the dialog.
 - **Flip diagram** — a *print → flip → print* row: printer, arrow, a page
   encircled by two curved arrows, arrow, printer.
+- **Button colour** (post-build polish) — green Continue, red Cancel,
+  blue Close; flat filled `tk.Button`s. Progress bar slowed to ~55 ms/step.
 
 Nothing open.

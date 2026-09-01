@@ -62,6 +62,16 @@ def test_terminal_phases_show_close_only(dlg, phase, heading):
     assert dlg._heading.cget("text") == heading
 
 
+def test_button_colours(dlg):
+    dlg.show_phase(rundialog.PRINTING, detail="…")
+    assert dlg._cancel_btn.cget("bg") == rundialog._RED
+    dlg.show_phase(rundialog.FLIP)
+    assert dlg._primary_btn.cget("bg") == rundialog._GREEN
+    assert dlg._cancel_btn.cget("bg") == rundialog._RED
+    dlg.show_phase(rundialog.DONE, detail="ok")
+    assert dlg._primary_btn.cget("bg") == rundialog._BLUE
+
+
 def test_primary_button_routes_by_phase(dlg):
     dlg.show_phase(rundialog.FLIP)
     dlg._primary()
