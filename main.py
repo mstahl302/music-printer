@@ -54,54 +54,85 @@ _PINK_BG, _PINK_FG = "#f2c7d6", "#8a2c4c"
 
 
 # ============================================================ file list
-_WHEEL_SEQS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
 _SCROLL_KEYS = {"Up": (-1, "units"), "Down": (1, "units"),
                 "Prior": (-1, "pages"), "Next": (1, "pages")}
+_SCROLL_SEQS = ("<MouseWheel>", "<TouchpadScroll>", "<Button-4>", "<Button-5>",
+                *(f"<KeyPress-{k}>" for k in _SCROLL_KEYS))
+_TOUCHPAD_TYPE = "39"          # X event type for <TouchpadScroll> (no tk.EventType member)
 
 
 def bind_region_scroll(canvas) -> None:
-    """Make wheel / trackpad / arrow keys scroll ``canvas`` whenever the pointer
-    is anywhere over it.
+    """Scroll ``canvas`` with the wheel, the trackpad, or the arrow / Page keys
+    whenever the pointer is over it.
 
-    On macOS Aqua neither a per-widget ``<MouseWheel>`` bind (events don't bubble
-    to the covered canvas) nor ``bind_all`` gated on ``<Enter>``/``<Leave>`` (the
-    inner frame masks the canvas so those never fire) works. Binding on the
-    *toplevel* does: its window path sits in every descendant's bindtags, so the
-    handler sees wheel/key events over any child, and it dies with the window."""
+    Tk 9 on macOS delivers three unrelated things and gives a Canvas a default
+    binding for none of them: ``<MouseWheel>`` for a physical wheel,
+    ``<TouchpadScroll>`` for two-finger trackpad scrolling, and ordinary key
+    events. Per-widget binds don't help (wheel events don't bubble up to the
+    masked canvas) and ``bind_all`` gated on ``<Enter>``/``<Leave>`` never arms
+    (the inner frame covers the canvas). Binding on the *toplevel* works: its
+    path is in every descendant's bindtags, so one handler covers the whole
+    subtree, and it is torn down with the window."""
     top = canvas.winfo_toplevel()
-    handler = lambda e: _region_scroll(canvas, e)
-    for seq in (*_WHEEL_SEQS, *(f"<KeyPress-{k}>" for k in _SCROLL_KEYS)):
-        top.bind(seq, handler, add="+")
+    for seq in _SCROLL_SEQS:
+        top.bind(seq, lambda e, c=canvas: _region_scroll(c, e), add="+")
+
+
+def _precise_deltas(dxdy: int) -> tuple[int, int]:
+    """Port of tk::PreciseScrollDeltas — unpack a <TouchpadScroll> %D word."""
+    low = dxdy & 0xFFFF
+    return dxdy >> 16, low if low < 0x8000 else low - 0x10000
+
+
+def _inside(canvas, widget) -> bool:
+    w = widget
+    while isinstance(w, tk.Misc):
+        if w is canvas:
+            return True
+        w = getattr(w, "master", None)
+    return False
 
 
 def _region_scroll(canvas, e):
-    """Scroll ``canvas`` for one wheel/key event, but only when the pointer is
-    over it and it actually overflows. Returns ``"break"`` when it handled the
-    event, ``None`` to let other bindings run."""
+    """Scroll ``canvas`` for one wheel / trackpad / key event, but only when it
+    happened over the canvas and there is something to scroll. Returns ``"break"``
+    when handled, ``None`` to let other bindings run."""
     try:
         if not canvas.winfo_ismapped():
             return None
-        x, y = canvas.winfo_rootx(), canvas.winfo_rooty()
-        w, h = canvas.winfo_width(), canvas.winfo_height()
-        if not (x <= e.x_root < x + w and y <= e.y_root < y + h):
+        over = _inside(canvas, getattr(e, "widget", None))
+        if not over:                       # key events, stray wheel targets
+            x, y = canvas.winfo_rootx(), canvas.winfo_rooty()
+            over = (x <= getattr(e, "x_root", -1) < x + canvas.winfo_width() and
+                    y <= getattr(e, "y_root", -1) < y + canvas.winfo_height())
+        if not over:
             return None
-        bb = canvas.bbox("all")
+        first, last = canvas.yview()
     except tk.TclError:
         return None
-    if not bb or bb[3] - bb[1] <= h:
-        return "break"
+    if first <= 0.0 and last >= 1.0:
+        return "break"                     # fits — nothing to scroll
+
     key = getattr(e, "keysym", "")
     num = getattr(e, "num", 0)
     if key in _SCROLL_KEYS:
         canvas.yview_scroll(*_SCROLL_KEYS[key])
+    elif str(e.type) == _TOUCHPAD_TYPE:
+        # <TouchpadScroll> fires a dense stream of small deltas; accumulate them
+        # and step the view a "unit" at a time so two-finger scrolling isn't a
+        # blur (mirrors tk::PreciseScrollDeltas / the Listbox binding's sign).
+        _dx, dy = _precise_deltas(int(e.delta))
+        acc = getattr(canvas, "_tp_accum", 0) + dy
+        steps = int(acc / 3)
+        canvas._tp_accum = acc - steps * 3
+        if steps:
+            canvas.yview_scroll(-steps, "units")
     elif num == 4:
         canvas.yview_scroll(-2, "units")
     elif num == 5:
         canvas.yview_scroll(2, "units")
-    else:
-        step = int(-1 * e.delta)
-        step = max(-4, min(4, step)) or (-1 if e.delta >= 0 else 1)
-        canvas.yview_scroll(step, "units")
+    else:                                  # <MouseWheel>; aqua factor is -40 / notch
+        canvas.yview_scroll(int(-e.delta / 40) or (-1 if e.delta > 0 else 1), "units")
     return "break"
 
 
