@@ -1,0 +1,3 @@
+# Runtime dependencies
+pikepdf>=9,<10
+pymupdf>=1.24

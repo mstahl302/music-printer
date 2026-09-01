@@ -1,0 +1,4 @@
+# Dev / build dependencies (install on top of requirements.txt)
+-r requirements.txt
+pyinstaller>=6
+pytest>=8
