@@ -36,12 +36,15 @@ begins. That means each song's own effective page count gets padded to
 so the next song always lands back on an odd (front) position — a
 generalization of the single-file blank-pad rule in
 [§7.2](specification.md#72-page-set-computation). The preview needs to
-show the plan for *every* file in the set, not just a single thumbnail.
+show the plan for *every* file in the set, not just a single thumbnail,
+including a **running total of sheets across the whole batch** so the
+user knows the total paper cost before committing to a long run.
 
 **Value:** this is the actual real-world use case for a choir member or
 accompanist — printing an entire Sunday's or a whole recital's worth of
 music as one packet, in performance order, in one sitting instead of N
-manual runs through the app.
+manual runs through the app, with no surprise about how much paper it'll
+take.
 
 ### 2. Extended printer-setup dialog
 
@@ -111,58 +114,75 @@ unanswerable technical question into "does this look right?", and doubles
 as an end-to-end smoke test that printing works at all before someone
 commits a real piece of music to it.
 
+### 7. Export to two print-ready PDFs (FIRST / SECOND)
+
+Instead of sending straight to a printer, save the two-pass plan as **two
+separate files** — `<name>-FIRST.pdf` (the even/pass-1 pages, with any
+blank pad) and `<name>-SECOND.pdf` (the odd/pass-2 pages) — mirroring the
+app's own two-pass structure rather than merging everything into one
+document.
+
+**Value:** lets someone print at a copy shop, on a printer this Mac can't
+reach, or queue the two halves for later: load FIRST, print it, flip the
+stack exactly as the app would have prompted, then load SECOND. Applies
+equally to a single file or a whole batch (#1) — a batch would export as
+one FIRST/SECOND pair covering the entire set.
+
+### 8. Multiple copies as two big passes, one flip
+
+Add a copies count to a print run. Rather than repeating the whole
+two-pass-and-flip cycle once per copy (flip after copy 1, print copy 2,
+flip again, …), run it as **one EVEN mega-pass covering every copy
+back-to-back, a single flip, then one ODD mega-pass covering every
+copy** — the same mechanism as batch/set-list printing (#1), just with the
+same file repeated N times instead of N different songs, and could reuse
+that plumbing directly.
+
+**Value:** for choir handouts or rehearsal copies, this turns "flip 6
+times to print 6 copies" into "flip once." Fewer physical touches means
+fewer chances to misalign the stack or lose count partway through.
+
 ---
 
 ## Other ideas worth considering
 
-### 7. Printer profiles
+### 9. Printer profiles
 
 Save the duplex/order/rotation settings (#3–#5) **per printer**, not
 globally, so someone who prints at home and at a rehearsal hall doesn't
 need to redo the welcome flow every time they switch. Natural companion to
 #2 and #6.
 
-### 8. Saved set-lists
+### 10. Saved set-lists
 
 Once batch printing (#1) exists, let a set of files + order be saved under
 a name ("2026-09-06 Service") and reprinted later without reselecting
 files — the realistic case is the same weekly rotation with small changes.
 
-### 9. Per-file cover-strip override in a batch
+### 11. Per-file cover-strip override in a batch
 
 In batch mode, let one file in the set override the global cover-strip
 mode (e.g. one song is already stripped, or isn't from Musicnotes at all
 and needs "Don't remove" while the rest use Smart).
 
-### 10. More cover-sheet vendors
+### 12. More cover-sheet vendors
 
 The detector registry in [cover_signals.md §5](cover_signals.md#5-extensibility)
 was built for this: add detectors for Sheet Music Direct, Hal Leonard
 Digital, MuseScore.com exports, etc., as real samples turn up.
 
-### 11. Full-document preview, not just page 1
+### 13. Full-document preview, not just page 1
 
 Let the user flip through all pages of the plan preview (or at least the
 first couple of pages after the strip), not just the thumbnail of page 1
 — catches a bad cover-strip decision or a corrupt/misordered PDF that a
 single thumbnail wouldn't reveal.
 
-### 12. Paper-usage estimate before a big run
-
-Especially relevant once batch printing exists: show a total sheet count
-("this set will use 42 sheets") before committing, not just per-file.
-
-### 13. Retry a failed pass without restarting
+### 14. Retry a failed pass without restarting
 
 If pass 2 fails partway (paper jam, printer goes offline, printer
 disconnects), let the user retry just that pass instead of starting the
 whole file over from Start.
-
-### 14. Export to a print-ready PDF instead of printing
-
-Save the interleaved/padded result as a single PDF (e.g. to email, or to
-print at a copy shop) instead of sending it straight to a printer —
-useful when the target printer isn't reachable from this machine.
 
 ### 15. Windows/Linux port
 
