@@ -45,8 +45,10 @@ Title bar: `Printing — Along the Way.pdf` (single file) /
 
 The body swaps by phase. Layout is constant: **heading**, **body area**
 (bar or diagram + text), **button row**. At every point the only actions
-are *the one forward action for this phase* and *Cancel* — there is no
-generic "Close", and the dialog never auto-closes.
+are *Cancel* and *the one forward action for the phase*. During an active
+run that forward action is only "Continue" (at the flip). At a terminal
+state (Done, cancelled, failed) the single button is **Close**, which
+dismisses the dialog. The dialog never auto-closes.
 
 ### 3.1 Phases
 
@@ -56,9 +58,13 @@ generic "Close", and the dialog never auto-closes.
 | Printing pass 1 | "Printing — pass 1 of 2" | indeterminate bar · "Even pages · job `NAME-123`" | Cancel print |
 | **Flip** | **"Flip the stack"** | a **print → flip → print** diagram (printer · arrow · a page encircled by two curved arrows · arrow · printer) · "Take the printed pages out, flip the whole stack over the **short edge**, and put them back in the tray." | **Cancel print** (quiet, left) · **Continue — print the back side** (primary, oversized, right) |
 | Printing pass 2 | "Printing — pass 2 of 2" | indeterminate bar · "Odd pages · job `NAME-456`" | Cancel print |
-| Done | "Done ✓" | "Double-sided copy printed." | **Print another** |
-| Job cancelled | "Job cancelled" | pass-1 / flip: (nothing more). pass-2: "Some sheets are printed on one side only, and there may be back-printed sheets still in the printer's feed tray — pull those out before the next job." | **Back to start** |
-| Couldn't finish | "Couldn't finish" (alert colour) | the printer/CUPS error | **Back to start** |
+| Done | "Done ✓" | "Double-sided copy printed." | **Close** |
+| Job cancelled | "Job cancelled" | pass-1 / flip: (nothing more). pass-2: "Some sheets are printed on one side only, and there may be back-printed sheets still in the printer's feed tray — pull those out before the next job." | **Close** |
+| Couldn't finish | "Couldn't finish" (alert colour) | the printer/CUPS error | **Close** |
+
+**Close** at any terminal state just dismisses the dialog window and
+returns to the main window (READY, or DONE where its own "Print another"
+takes over).
 
 Single-page jobs (no flip) run Preparing → Printing → Done.
 
@@ -82,16 +88,16 @@ Dock-icon bounce is out of scope for this spec — tracked as an idea in
 
 ### 3.3 Buttons and colour
 
-- **Primary** — the single forward action for the phase: *Continue —
-  print the back side* at the flip, *Print another* at Done, *Back to
-  start* at a cancelled / failed end. Filled accent, bottom-right, bound
-  to `<Return>`.
+- **Primary** — filled accent, bottom-right, bound to `<Return>`. It is
+  *Continue — print the back side* at the flip, and **Close** at every
+  terminal state (Done, cancelled, failed) — Close just dismisses the
+  dialog.
 - **Cancel print** — destructive, quiet: a text button, bottom-left,
   showing the alert colour only on hover / focus. Present during
   Preparing, Printing pass 1, Flip, and Printing pass 2.
-- No generic "Close" button anywhere. At a terminal state the dialog
-  waits until the user picks the forward action or uses the window's own
-  close box.
+- **No "Close" during an active run** — mid-run the only actions are
+  Continue (at the flip) and Cancel print. Close appears only once the
+  run has reached a terminal state.
 - Destructive confirmations are unchanged (§4).
 
 ## 4. Behaviour
@@ -107,10 +113,10 @@ unchanged; the dialog just renders whichever state the app is in.
   window is relevant mid-run, and there is no status line mirrored there.
 - **Cancel** — semantics from
   [specification.md §5.5](specification.md#55-cancel--error-handling):
-  - during pass 1 → cancel the CUPS job → "Job cancelled" → **Back to
-    start** returns the main window to READY.
+  - during pass 1 → cancel the CUPS job → "Job cancelled" → **Close**
+    returns the main window to READY.
   - during the flip wait → confirm ("Pass 1 sheets are already
-    printed…"); on confirm → "Job cancelled" → Back to start (READY).
+    printed…"); on confirm → "Job cancelled" → Close (READY).
   - during pass 2 → cancel the job → "Job cancelled" **with the feed-tray
     note** (§3.1).
 - **No retry, ever.** There is no "reprint pass 2" — by the time someone
@@ -118,10 +124,10 @@ unchanged; the dialog just renders whichever state the app is in.
   message is just "Job cancelled".
 - **Printer-paused** warning still fires before the first submit, from the
   main window, before the dialog opens — unchanged.
-- **Ending.** At a terminal state the dialog does not auto-close. The
-  forward button (**Print another** / **Back to start**) or the window's
-  close box dismisses it and returns the main window to its READY / DONE
-  state.
+- **Ending.** At a terminal state the dialog does not auto-close. **Close**
+  (or the window's close box) dismisses it and returns to the main window
+  in its READY / DONE state — where the main window's own "Print another"
+  takes over.
 
 ```
 State flow (unchanged — the feature is presentation only):
@@ -176,7 +182,7 @@ sketch of the two that matter most:
 Estimate: one new ~150-line file, ~40 lines moved in `main.py`, ~15 new.
 No new runtime dependency.
 
-## 7. Review outcomes (round 1, 2026-09-01)
+## 7. Review outcomes (2026-09-01)
 
 Resolved:
 
@@ -189,8 +195,10 @@ Resolved:
 - **Truly modal (`grab_set`)** — yes.
 - **Retry a cancelled pass** — never. Cancel is cancel. A pass-2 cancel
   additionally warns about back-printed sheets left in the feed tray.
+- **Button wording** — flip: **"Continue — print the back side"**; every
+  terminal state (Done, cancelled, failed): **"Close"**, which just
+  dismisses the dialog.
+- **Flip diagram** — a *print → flip → print* row: printer, arrow, a page
+  encircled by two curved arrows, arrow, printer.
 
-Still to confirm:
-
-1. Exact button wording — flip: **"Continue — print the back side"**;
-   Done: **"Print another"**; cancelled / failed: **"Back to start"**.
+Nothing open.
