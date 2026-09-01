@@ -28,8 +28,14 @@ _TIMEOUT = 15
 
 @dataclass(frozen=True)
 class Printer:
-    name: str
+    name: str            # CUPS queue name, e.g. "Xerox_Phaser_6600N__86_E6_B8_"
     is_default: bool
+    display_name: str = ""  # human-readable (CUPS "Description"), e.g. "Xerox Phaser (Windermere)"
+
+    @property
+    def label(self) -> str:
+        """What to show in the UI — falls back to the raw queue name."""
+        return self.display_name or self.name
 
 
 # --- discovery -----------------------------------------------------------
@@ -38,9 +44,27 @@ def list_printers() -> list[Printer]:
     """Every configured print destination, default first."""
     names = _run(["lpstat", "-e"]).split()
     default = default_printer()
-    printers = [Printer(n, n == default) for n in names]
-    printers.sort(key=lambda p: (not p.is_default, p.name.lower()))
+    descriptions = _printer_descriptions()
+    printers = [Printer(n, n == default, descriptions.get(n, "")) for n in names]
+    printers.sort(key=lambda p: (not p.is_default, p.label.lower()))
     return printers
+
+
+def _printer_descriptions() -> dict[str, str]:
+    """CUPS's human-readable name (the "Description" / printer-info field —
+    what System Settings shows) for every queue, keyed by queue name."""
+    out = _safe_run(["lpstat", "-l", "-p"])
+    result: dict[str, str] = {}
+    current: str | None = None
+    for line in out.splitlines():
+        if line.startswith("printer "):
+            parts = line.split()
+            current = parts[1] if len(parts) > 1 else None
+        elif current and line.strip().startswith("Description:"):
+            desc = line.split(":", 1)[1].strip()
+            if desc:
+                result[current] = desc
+    return result
 
 
 def default_printer() -> str | None:

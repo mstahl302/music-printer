@@ -53,7 +53,9 @@ class App(tk.Tk):
         self._q: queue.Queue = queue.Queue()
 
         # inputs
-        self.printer = tk.StringVar(value=self.cfg["last_printer"])
+        self.printer = tk.StringVar(value=self.cfg["last_printer"])  # real CUPS queue name
+        self.printer_display = tk.StringVar(value="")                # friendly text shown on the button
+        self._printers: dict[str, printing.Printer] = {}
         self.cover_label = tk.StringVar(value=MODE_TO_LABEL.get(self.cfg["strip_mode"], "Smart (detect)"))
         self.source_path: Path | None = None
 
@@ -85,7 +87,7 @@ class App(tk.Tk):
         frm.columnconfigure(1, weight=1)
 
         ttk.Label(frm, text="Printer:").grid(row=0, column=0, sticky="w", **pad)
-        self.printer_menu = ttk.OptionMenu(frm, self.printer, "")
+        self.printer_menu = ttk.OptionMenu(frm, self.printer_display, "")
         self.printer_menu.grid(row=0, column=1, columnspan=2, sticky="ew", **pad)
         ttk.Label(frm, textvariable=self.printer_warn, foreground="#b00").grid(
             row=1, column=1, columnspan=2, sticky="w", padx=10)
@@ -147,22 +149,33 @@ class App(tk.Tk):
         except Exception as exc:
             self.preview_text.set(f"Could not list printers: {exc}")
             return
+        self._printers = {p.name: p for p in printers}
         menu = self.printer_menu["menu"]
         menu.delete(0, "end")
         for p in printers:
-            label = f"{p.name}  (default)" if p.is_default else p.name
+            label = f"{p.label}  (default)" if p.is_default else p.label
             menu.add_command(label=label, command=lambda n=p.name: self._choose_printer(n))
         names = [p.name for p in printers]
         if self.printer.get() not in names:
             default = next((p.name for p in printers if p.is_default), names[0] if names else "")
             self.printer.set(default)
+        self._sync_printer_display()
         self._check_printer()
 
     def _choose_printer(self, name: str) -> None:
         self.printer.set(name)
+        self._sync_printer_display()
         self.cfg["last_printer"] = name
         settings.save(self.cfg)
         self._check_printer()
+
+    def _sync_printer_display(self) -> None:
+        """Keep the OptionMenu button showing the friendly name, not the raw queue name."""
+        p = self._printers.get(self.printer.get())
+        if p is None:
+            self.printer_display.set(self.printer.get())
+            return
+        self.printer_display.set(f"{p.label}  (default)" if p.is_default else p.label)
 
     def _check_printer(self) -> None:
         name = self.printer.get()
