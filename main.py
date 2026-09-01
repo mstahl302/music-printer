@@ -483,7 +483,6 @@ class App(tk.Tk):
 
         start_ok = state == READY and self.plan is not None and bool(self.printer.get())
         self.start_btn.configure(state="normal" if start_ok else "disabled")
-        widgets.recolour(self.start_btn, widgets.BLUE if start_ok else widgets.BLUE_FADED)
         (self.start_btn.grid if state == READY else self.start_btn.grid_remove)()
         (self.another_btn.grid if state in (DONE, DONE_ERROR)
          else self.another_btn.grid_remove)()
