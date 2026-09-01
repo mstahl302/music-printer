@@ -1,0 +1,172 @@
+# Music Printer — Feature Requests
+
+**Status:** BACKLOG — ideas and requests, not yet scheduled or spec'd.
+**Date:** 2026-09-01
+**Owner:** markstahl
+
+This is a running list of ideas for after v1, roughly ordered by priority
+within each section. Nothing here is designed yet — when an item is picked
+up, it gets its own design pass (and, where it touches printing behavior,
+an update to [specification.md](specification.md)).
+
+> **Note on scope:** several items below (duplex mode, page order,
+> back-side rotation) intentionally revisit decisions
+> [specification.md §4.2](specification.md#42-out-of-scope--non-goals-v1)
+> and [§7.4](specification.md#74-fixed-printer-assumptions) marked as
+> fixed, non-configurable v1 assumptions. That's fine — this doc is where
+> "maybe later" lives — but when one of them is actioned, the spec itself
+> needs a new revision, not a quiet contradiction.
+
+---
+
+## Requested features
+
+### 1. Batch / set-list printing
+
+Let the user select **multiple PDFs**, arrange them in set-list order (the
+order a choir or worship service will actually sing them), preview the
+combined plan, and print the whole set as one guided two-pass job instead
+of running the app once per song.
+
+The key correctness requirement: **each song must start on a front-facing
+page**, so the printed stack can be split back into individual songs (or
+handed out mid-packet) without hunting for where one ends and the next
+begins. That means each song's own effective page count gets padded to
+*even* before concatenation (not just when the file's own count is odd),
+so the next song always lands back on an odd (front) position — a
+generalization of the single-file blank-pad rule in
+[§7.2](specification.md#72-page-set-computation). The preview needs to
+show the plan for *every* file in the set, not just a single thumbnail.
+
+**Value:** this is the actual real-world use case for a choir member or
+accompanist — printing an entire Sunday's or a whole recital's worth of
+music as one packet, in performance order, in one sitting instead of N
+manual runs through the app.
+
+### 2. Extended printer-setup dialog
+
+A secondary "Printer Setup…" window, off the main flow, that holds the
+printer-behavior toggles below (duplex capability, page order, back-side
+rotation) plus anything else that's set once per printer and rarely
+touched again.
+
+**Value:** keeps the main window to its current "nothing fancy" shape
+(printer, file, cover mode, Start) for the common case, while giving the
+option to configure or fix printer-specific behavior without cluttering
+the everyday screen.
+
+### 3. Detect/select true duplex support
+
+Let the user mark a printer as **capable of real double-sided printing**
+and, when set, skip the two-pass-plus-flip workflow entirely: send one job
+with the OS duplex option (`lp -o sides=two-sided-long-edge` /
+`two-sided-short-edge`) and be done.
+
+**Value:** the whole two-pass design exists to work around a printer that
+*can't* duplex. For anyone whose printer actually can, this is strictly
+simpler, faster (one job, no waiting, no flip), and removes a whole class
+of mid-flip cancel/error states. Likely worth pairing with CUPS capability
+probing (`lpoptions -l`) so the app can suggest the right answer instead of
+asking the user to know it.
+
+### 4. Configurable page order (reverse vs. forward printing)
+
+Promote `printer_reverses_output` (currently hard-coded `true`, per
+[Appendix A](specification.md#appendix-a-page-ordering-rationale)) to a
+real per-printer setting. When set to "forward," reverse each pass's page
+list before building the temp PDF instead of sending it ascending, per the
+math already sketched for this case.
+
+**Value:** today the app only produces correct output on a printer that
+behaves like the owner's. This is the single change that makes it usable
+on someone else's printer at all — without it, every other user has to
+reverse-engineer the ordering assumption for themselves.
+
+### 5. Configurable 180° rotation on pass 2
+
+Add back `rotate_back_side_180` as a per-printer setting: rotate every
+page in the second pass 180° before printing.
+
+**Value:** the correct value depends on exactly how a person physically
+flips the stack (short-edge vs. long-edge, and which way). The current
+build assumes one specific flip convention; this setting is what makes a
+*different* flip convention produce right-side-up backs instead of upside
+down.
+
+### 6. Welcome / calibration flow
+
+A first-run wizard that walks a new user through printer setup instead of
+asking them to know abstract facts about it: pick a printer, print a small
+labelled test sheet (e.g. 4 numbered pages), and answer plain questions
+about what came out ("Is page 2 on top or on the bottom of the stack?").
+From the answers, derive #3–#5 automatically. Optionally, have the user
+physically practice the flip once, with the app confirming the result
+before declaring the printer "ready."
+
+**Value:** almost nobody knows offhand whether their printer "reverses
+output" or which duplex option their driver exposes — that's exactly the
+knowledge this app currently assumes the user (originally, just the
+owner) already has. A guided, experiential calibration turns an
+unanswerable technical question into "does this look right?", and doubles
+as an end-to-end smoke test that printing works at all before someone
+commits a real piece of music to it.
+
+---
+
+## Other ideas worth considering
+
+### 7. Printer profiles
+
+Save the duplex/order/rotation settings (#3–#5) **per printer**, not
+globally, so someone who prints at home and at a rehearsal hall doesn't
+need to redo the welcome flow every time they switch. Natural companion to
+#2 and #6.
+
+### 8. Saved set-lists
+
+Once batch printing (#1) exists, let a set of files + order be saved under
+a name ("2026-09-06 Service") and reprinted later without reselecting
+files — the realistic case is the same weekly rotation with small changes.
+
+### 9. Per-file cover-strip override in a batch
+
+In batch mode, let one file in the set override the global cover-strip
+mode (e.g. one song is already stripped, or isn't from Musicnotes at all
+and needs "Don't remove" while the rest use Smart).
+
+### 10. More cover-sheet vendors
+
+The detector registry in [cover_signals.md §5](cover_signals.md#5-extensibility)
+was built for this: add detectors for Sheet Music Direct, Hal Leonard
+Digital, MuseScore.com exports, etc., as real samples turn up.
+
+### 11. Full-document preview, not just page 1
+
+Let the user flip through all pages of the plan preview (or at least the
+first couple of pages after the strip), not just the thumbnail of page 1
+— catches a bad cover-strip decision or a corrupt/misordered PDF that a
+single thumbnail wouldn't reveal.
+
+### 12. Paper-usage estimate before a big run
+
+Especially relevant once batch printing exists: show a total sheet count
+("this set will use 42 sheets") before committing, not just per-file.
+
+### 13. Retry a failed pass without restarting
+
+If pass 2 fails partway (paper jam, printer goes offline, printer
+disconnects), let the user retry just that pass instead of starting the
+whole file over from Start.
+
+### 14. Export to a print-ready PDF instead of printing
+
+Save the interleaved/padded result as a single PDF (e.g. to email, or to
+print at a copy shop) instead of sending it straight to a printer —
+useful when the target printer isn't reachable from this machine.
+
+### 15. Windows/Linux port
+
+`printing.py` already sits on `lp`/`lpstat`/`cancel`, which exist on Linux
+(CUPS) as-is — a Linux build is mostly a packaging exercise. Windows would
+need a different print backend (no CUPS), so it's a bigger lift and lower
+priority given this started as a personal macOS tool.

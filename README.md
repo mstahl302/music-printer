@@ -28,6 +28,7 @@ build.sh                 produces "dist/Music Printer.app"
 
 Full design: [docs/specification.md](docs/specification.md).
 Cover-detection heuristics: [docs/cover_signals.md](docs/cover_signals.md).
+Roadmap / backlog: [docs/feature_requests.md](docs/feature_requests.md).
 
 ## Setup
 
