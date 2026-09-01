@@ -113,7 +113,8 @@ mode.
   rows** so it reads as a list even when empty (empty rows carry an "Add
   PDFs to build your set…" hint). Each file row:
   - a **drag handle** (grippy, `⠿`) on the left edge — drag a row up or
-    down to reorder.
+    down to reorder. While dragging, a thin **dark line** shows where the
+    row will drop; the list edge-scrolls if the drop point is off-screen.
   - the **filename**, middle-truncated with `…` if long (the extension is
     kept), so the remove control is always visible.
   - `N pages` — the effective page count (after cover strip). A file that
@@ -123,8 +124,9 @@ mode.
   - No position numbers.
 - **Add PDFs…** — a normal open panel with multi-select; appends to the
   list.
-- The box shows **6 rows**; beyond that it **scrolls** (scrollbar appears
-  only when needed).
+- The box shows **6 rows**; beyond that it **scrolls** — by scrollbar,
+  mouse-over scroll wheel / trackpad, or arrow / PageUp-PageDown keys. The
+  scrollbar appears only when needed.
 - **Preview** button — enabled when the list has at least one file **and
   no un-openable files**. An un-openable file blocks Preview until it is
   removed.
@@ -143,12 +145,11 @@ Each block: the thumbnail, the filename, and a one-line side comment:
   when a cover was actually removed. **No confidence score, ever.**
 - When no cover was removed, the line is just `5 pages · 3 sheets`.
 
-At the bottom:
+At the bottom, to the left of the **Start** button:
 
-- a whole-set summary line;
-- to the left of Start: **"Printing requires _X_ sheets of paper. When
-  you're ready, click Start."**
-- the **Start** button.
+- **"Printing requires _X_ sheets of paper"** — bold and prominent; the
+  sheet count is critical to know before printing.
+- "When you're ready, click Start." on the line below, in normal weight.
 
 ### 5.3 Running
 
@@ -217,13 +218,15 @@ this hands off to. It is built.
 - **Row controls** — a red circle-X (`⊗`) to remove; no "OK" checkmark.
 - **Un-openable file** — shows a warning in place of the page count and
   **blocks Preview until removed**.
-- **Long lists** — show ~6 rows, then scroll.
+- **Long lists** — show ~6 rows, then scroll (scrollbar, mouse wheel,
+  arrow / Page keys). A dark drop-line shows the target during a drag.
 - **Preview thumbnails** — render the first page of **every** file; scroll
   if needed. No lazy-loading, no cap.
 - **Per-file side comment** — `[cover removed]` (pink chip, only when a
   cover was removed) · `N pages` · `M sheets`. No confidence score.
 - **Preview is its own dialog**; Start there swaps it for the run dialog.
-- **"Requires X sheets of paper"** line sits to the left of Start.
+- **"Printing requires X sheets of paper"** sits to the left of Start,
+  bold — the sheet count is critical before printing.
 - **Add-folder**, **paper-count threshold warning**, **saved set-lists**
   (#11), **per-file cover override** (#12) — all out of scope.
 

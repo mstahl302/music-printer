@@ -54,6 +54,37 @@ _PINK_BG, _PINK_FG = "#f2c7d6", "#8a2c4c"
 
 
 # ============================================================ file list
+_WHEEL_SEQS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+
+
+def _enable_wheel(canvas, *, on_scroll=None) -> None:
+    """Mouse-over wheel/trackpad scrolling for a Canvas, only when it overflows."""
+    def wheel(e):
+        bb = canvas.bbox("all")
+        if not bb or bb[3] - bb[1] <= canvas.winfo_height():
+            return
+        if getattr(e, "num", 0) == 4:
+            canvas.yview_scroll(-1, "units")
+        elif getattr(e, "num", 0) == 5:
+            canvas.yview_scroll(1, "units")
+        else:
+            canvas.yview_scroll(int(-1 * e.delta), "units")
+        if on_scroll:
+            on_scroll()
+
+    def bind(_e=None):
+        for s in _WHEEL_SEQS:
+            canvas.bind_all(s, wheel)
+
+    def unbind(_e=None):
+        for s in _WHEEL_SEQS:
+            canvas.unbind_all(s)
+
+    canvas.bind("<Enter>", bind)
+    canvas.bind("<Leave>", unbind)
+    canvas.bind("<Destroy>", unbind)
+
+
 def _elide(name: str, maxlen: int) -> str:
     """Middle-truncate a filename, keeping the extension."""
     if len(name) <= maxlen:
@@ -83,6 +114,7 @@ class FileList(ttk.Frame):
         self.files: list[Path] = []
         self._entry_by_path: dict[str, jobs.FileEntry] = {}
         self._drag_from: int | None = None
+        self._drop_target: int | None = None
 
         wrap = tk.Frame(self, bd=1, relief="solid", bg=self.STRIPE[0])
         wrap.grid(row=0, column=0, sticky="nsew")
@@ -102,7 +134,31 @@ class FileList(ttk.Frame):
         self._canvas.bind("<Configure>",
                           lambda e: self._canvas.itemconfigure(self._winid, width=e.width))
         self._inner.columnconfigure(0, weight=1)
+
+        self._drop_line = tk.Frame(self._inner, height=2, bg="#1a1a1a")  # drag indicator
+        _enable_wheel(self._canvas)
+        self._canvas.bind("<Enter>", self._bind_keys, add="+")
+        self._canvas.bind("<Leave>", self._unbind_keys, add="+")
         self._render()
+
+    # ---- wheel / keyboard scrolling ---------------------------
+    def _bind_keys(self, _e=None) -> None:
+        for seq in ("<Up>", "<Down>", "<Prior>", "<Next>"):
+            self._canvas.bind_all(seq, self._arrow)
+
+    def _unbind_keys(self, _e=None) -> None:
+        for seq in ("<Up>", "<Down>", "<Prior>", "<Next>"):
+            self._canvas.unbind_all(seq)
+
+    def _arrow(self, e) -> None:
+        bb = self._canvas.bbox("all")
+        if not bb or bb[3] - bb[1] <= self._canvas.winfo_height():
+            return
+        move = {"Up": (-1, "units"), "Down": (1, "units"),
+                "Prior": (-1, "pages"), "Next": (1, "pages")}.get(e.keysym)
+        if move:
+            self._canvas.yview_scroll(*move)
+            return "break"
 
     def _on_scroll(self, lo, hi) -> None:
         full = float(lo) <= 0.0 and float(hi) >= 1.0
@@ -128,7 +184,9 @@ class FileList(ttk.Frame):
     # ---- rendering ---------------------------------------------
     def _render(self) -> None:
         for w in self._inner.winfo_children():
-            w.destroy()
+            if w is not self._drop_line:
+                w.destroy()
+        self._drop_line.place_forget()
         n_rows = max(len(self.files), self.VISIBLE)
         for i in range(n_rows):
             stripe = self.STRIPE[i % 2]
@@ -149,6 +207,7 @@ class FileList(ttk.Frame):
         grip = tk.Label(row, text="⠿", bg=stripe, fg="#9a9a9a", cursor="fleur")
         grip.grid(row=0, column=0, padx=(7, 8))
         grip.bind("<ButtonPress-1>", lambda _e, idx=i: self._drag_start(idx))
+        grip.bind("<B1-Motion>", self._drag_motion)
         grip.bind("<ButtonRelease-1>", self._drag_drop)
 
         tk.Label(row, text=_elide(path.name, self.NAME_MAX), bg=stripe, anchor="w").grid(
@@ -173,19 +232,48 @@ class FileList(ttk.Frame):
         self._on_change()
 
     # ---- drag to reorder -------------------------------------
+    def _real_rows(self):
+        return [r for r in self._inner.winfo_children() if getattr(r, "_path", None) is not None]
+
     def _drag_start(self, idx: int) -> None:
         self._drag_from = idx
+        self._drop_target = idx
 
-    def _drag_drop(self, event) -> None:
-        src = self._drag_from
-        self._drag_from = None
-        if src is None:
+    def _drag_motion(self, event) -> None:
+        if self._drag_from is None:
             return
-        w = self.winfo_containing(event.x_root, event.y_root)
-        while w is not None and getattr(w, "_path", None) is None:
-            w = getattr(w, "master", None)
-        rows = [r for r in self._inner.winfo_children() if getattr(r, "_path", None) is not None]
-        dst = rows.index(w) if w in rows else src
+        rows = self._real_rows()
+        if not rows:
+            return
+        y = event.y_root - self._inner.winfo_rooty()
+        target = len(rows)
+        for idx, r in enumerate(rows):
+            if y < r.winfo_y() + r.winfo_height() / 2:
+                target = idx
+                break
+        self._drop_target = target
+        if target < len(rows):
+            line_y = rows[target].winfo_y()
+        else:
+            line_y = rows[-1].winfo_y() + rows[-1].winfo_height()
+        self._drop_line.place(x=0, y=max(0, line_y - 1), relwidth=1)
+        self._drop_line.lift()
+
+        vy = event.y_root - self._canvas.winfo_rooty()
+        if vy < 18:
+            self._canvas.yview_scroll(-1, "units")
+        elif vy > self._canvas.winfo_height() - 18:
+            self._canvas.yview_scroll(1, "units")
+
+    def _drag_drop(self, _event) -> None:
+        src, dst = self._drag_from, self._drop_target
+        self._drag_from = self._drop_target = None
+        self._drop_line.place_forget()
+        if src is None or dst is None:
+            return
+        if dst > src:
+            dst -= 1
+        dst = max(0, min(dst, len(self.files) - 1))
         if dst != src:
             p = self.files.pop(src)
             self.files.insert(dst, p)
@@ -232,6 +320,7 @@ class PreviewDialog(tk.Toplevel):
             canvas.configure(bg=ttk.Style().lookup("TFrame", "background") or None)
         except tk.TclError:
             pass
+        _enable_wheel(canvas)
 
         layout = setplan.layout
         for i, e in enumerate(setplan.ok_entries):
@@ -259,9 +348,12 @@ class PreviewDialog(tk.Toplevel):
         bar.grid(row=1, column=0, columnspan=2, sticky="ew")
         bar.columnconfigure(0, weight=1)
         n = setplan.sheets_to_prepare
-        ttk.Label(bar, wraplength=320, justify="left",
-                  text=(f"Printing requires {n} sheet{'s' if n != 1 else ''} of paper. "
-                        "When you're ready, click Start.")).grid(row=0, column=0, sticky="w")
+        msg = ttk.Frame(bar)
+        msg.grid(row=0, column=0, sticky="w")
+        ttk.Label(msg, text=f"Printing requires {n} sheet{'s' if n != 1 else ''} of paper",
+                  font=("TkDefaultFont", 13, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(msg, text="When you're ready, click Start.",
+                  foreground="#666").grid(row=1, column=0, sticky="w")
         widgets.button(bar, "Start", widgets.BLUE, self._start, big=True).grid(row=0, column=1)
 
         self._center_on(parent)
