@@ -218,9 +218,21 @@ If pass 2 fails partway (paper jam, printer goes offline, printer
 disconnects), let the user retry just that pass instead of starting the
 whole file over from Start.
 
+> Round-1 review of spec #1 rejected retry *after a user cancel* — by then
+> the stack is usually misaligned. Retry after a *hardware* failure (jam,
+> offline), caught before any sheet is mishandled, may still be worth it —
+> revisit if it comes up.
+
 ### 16. Windows/Linux port
 
 `printing.py` already sits on `lp`/`lpstat`/`cancel`, which exist on Linux
 (CUPS) as-is — a Linux build is mostly a packaging exercise. Windows would
 need a different print backend (no CUPS), so it's a bigger lift and lower
 priority given this started as a personal macOS tool.
+
+### 17. Dock-icon attention bounce
+
+When the run dialog reaches the flip step, bounce the app's Dock icon
+(`NSApp.requestUserAttention_(NSCriticalRequest)`) in addition to the
+sound and window-raise. Needs PyObjC (`pyobjc-framework-Cocoa`). Split out
+of spec #1 in round-1 review as "not important".
