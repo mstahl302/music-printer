@@ -11,6 +11,8 @@ import math
 import tkinter as tk
 from tkinter import ttk
 
+from musicprinter import widgets
+
 # phases
 PREPARING = "preparing"
 PRINTING = "printing"
@@ -33,7 +35,7 @@ _HEADING = {
 _HEADING_FG = {FLIP: "#c27214", FAILED: "#c0453a", DONE: "#3a8a5c"}
 
 # button colours (green = continue, red = cancel, blue = acknowledge)
-_GREEN, _RED, _BLUE = "#2f8f4e", "#c0392b", "#2b5fb0"
+_GREEN, _RED, _BLUE = widgets.GREEN, widgets.RED, widgets.BLUE
 
 # ms between indeterminate-bar steps — higher is calmer (Tk default is 50)
 _BAR_MS = 55
@@ -42,26 +44,6 @@ FLIP_INSTRUCTION = (
     "Take the printed pages out, flip the whole stack over the SHORT edge, "
     "and put them back in the tray."
 )
-
-
-def _darken(hex_colour: str, factor: float = 0.82) -> str:
-    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
-    return "#%02x%02x%02x" % (int(r * factor), int(g * factor), int(b * factor))
-
-
-def _button(parent, text, colour, command):
-    """A flat, filled button — ttk on macOS ignores background, tk.Button + flat relief does not."""
-    return tk.Button(
-        parent, text=text, command=command,
-        bg=colour, fg="white", activebackground=_darken(colour), activeforeground="white",
-        disabledforeground="#e6e6e6", highlightbackground=colour,
-        relief="flat", borderwidth=0, highlightthickness=0,
-        font=("TkDefaultFont", 12), padx=16, pady=7, cursor="pointinghand",
-    )
-
-
-def _recolour(btn, colour) -> None:
-    btn.configure(bg=colour, activebackground=_darken(colour), highlightbackground=colour)
 
 
 class RunDialog(tk.Toplevel):
@@ -100,8 +82,8 @@ class RunDialog(tk.Toplevel):
         btns = ttk.Frame(frm)
         btns.grid(row=6, column=0, sticky="ew", pady=(18, 0))
         btns.columnconfigure(0, weight=1)
-        self._cancel_btn = _button(btns, "Cancel print", _RED, self._cancel)
-        self._primary_btn = _button(btns, "", _BLUE, self._primary)
+        self._cancel_btn = widgets.button(btns, "Cancel print", _RED, self._cancel)
+        self._primary_btn = widgets.button(btns, "", _BLUE, self._primary)
         self._cancel_btn.grid(row=0, column=0, sticky="w")
         self._primary_btn.grid(row=0, column=1, sticky="e")
 
@@ -146,12 +128,12 @@ class RunDialog(tk.Toplevel):
         self._cancel_btn.configure(state="normal")
 
         if phase == FLIP:
-            _recolour(self._primary_btn, _GREEN)
+            widgets.recolour(self._primary_btn, _GREEN)
             self._primary_btn.configure(text="Continue — print the back side")
             self._primary_btn.grid()
             self._primary_btn.focus_set()
         elif phase in _TERMINAL:
-            _recolour(self._primary_btn, _BLUE)
+            widgets.recolour(self._primary_btn, _BLUE)
             self._primary_btn.configure(text="Close")
             self._primary_btn.grid()
             self._primary_btn.focus_set()

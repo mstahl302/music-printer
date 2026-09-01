@@ -98,8 +98,10 @@ Dock-icon bounce is out of scope for this spec — tracked as an idea in
   Continue (at the flip) and Cancel print. Close appears only once the
   run has reached a terminal state.
 - Buttons use flat `tk.Button`s with an explicit `background` (ttk on
-  macOS ignores button colour). Green `#2f8f4e`, red `#c0392b`, blue
-  `#2b5fb0`.
+  macOS ignores button colour), from `musicprinter/widgets.py`. Green
+  `#2f8f4e`, red `#c0392b`, blue `#2b5fb0`. **The main window uses the
+  same set** — *Choose PDF…* and *Start* are blue, *Start* a faded blue
+  `#9fb6d9` while it's disabled.
 - The indeterminate progress bar steps every ~55 ms (a bit slower than
   the Tk default) so it reads as working, not frantic.
 - Destructive confirmations are unchanged (§4).

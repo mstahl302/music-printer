@@ -21,7 +21,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from musicprinter import jobs, printing, rundialog, settings
+from musicprinter import jobs, printing, rundialog, settings, widgets
 from musicprinter.pdfio import PdfError
 
 # UI label  ->  strip mode
@@ -110,7 +110,7 @@ class App(tk.Tk):
         ttk.Label(frm, textvariable=self.printer_warn, foreground="#b00").grid(
             row=1, column=1, columnspan=2, sticky="w", padx=10)
 
-        ttk.Button(frm, text="Choose PDF…", command=self._pick_file).grid(
+        widgets.button(frm, "Choose PDF…", widgets.BLUE, self._pick_file).grid(
             row=2, column=0, sticky="w", **pad)
         self.file_label = ttk.Label(frm, text="No file chosen", width=44, anchor="w")
         self.file_label.grid(row=2, column=1, columnspan=2, sticky="w", **pad)
@@ -130,10 +130,10 @@ class App(tk.Tk):
         ttk.Label(prev, textvariable=self.preview_text, justify="left",
                   anchor="w").grid(row=0, column=1, sticky="nw")
 
-        self.start_btn = ttk.Button(frm, text="Start", command=self._start)
+        self.start_btn = widgets.button(frm, "Start", widgets.BLUE, self._start, big=True)
         self.start_btn.grid(row=5, column=0, columnspan=3, **pad)
 
-        self.another_btn = ttk.Button(frm, text="Print another", command=self._reset)
+        self.another_btn = widgets.button(frm, "Print another", widgets.BLUE, self._reset, big=True)
         self.another_btn.grid(row=5, column=0, columnspan=3, **pad)
         self.another_btn.grid_remove()
 
@@ -482,7 +482,8 @@ class App(tk.Tk):
         self.cover_menu.config(state=inputs)
 
         start_ok = state == READY and self.plan is not None and bool(self.printer.get())
-        self.start_btn.config(state="normal" if start_ok else "disabled")
+        self.start_btn.configure(state="normal" if start_ok else "disabled")
+        widgets.recolour(self.start_btn, widgets.BLUE if start_ok else widgets.BLUE_FADED)
         (self.start_btn.grid if state == READY else self.start_btn.grid_remove)()
         (self.another_btn.grid if state in (DONE, DONE_ERROR)
          else self.another_btn.grid_remove)()
