@@ -10,7 +10,7 @@ import pymupdf
 import pytest
 
 from musicprinter import covers, jobs
-from musicprinter.pdfio import PdfError, build_subset
+from musicprinter.pdfio import PdfError
 
 COVER_TEXT = (
     'From: "Test Show"\n'
@@ -94,46 +94,56 @@ def test_always_mode_leaves_single_page_alone(tmp_path):
     assert covers.detect_cover(one, "always", threshold=0.70) is None
 
 
-# ---- plan building --------------------------------------------------
+# ---- plan building (list of one) ---------------------------------
 
 def test_build_plan_removes_cover_and_renumbers(cover_pdf):
-    plan = jobs.build_plan(cover_pdf, "smart", threshold=0.70)
-    assert plan.n_source_pages == 4
-    assert plan.cover_removed == 1
-    assert plan.n_effective == 3
-    assert plan.passes.even_pages == (2,)
-    assert plan.passes.odd_pages == (1, 3)
-    assert plan.passes.pad_blank is True
-    assert plan.sheets_to_prepare == 2
+    sp = jobs.build_plan([cover_pdf], "smart", threshold=0.70)
+    e = sp.entries[0]
+    assert e.n_source == 4 and e.cover_removed == 1 and e.n_effective == 3
+    assert sp.layout.passes.even_pages == (2,)
+    assert sp.layout.passes.odd_pages == (1, 3)
+    assert sp.layout.passes.pad_blank is True
+    assert sp.sheets_to_prepare == 2
+    assert sp.n_files == 1 and not sp.has_errors
 
 
 def test_build_plan_no_cover(plain_pdf):
-    plan = jobs.build_plan(plain_pdf, "smart", threshold=0.70)
-    assert plan.cover_removed == 0
-    assert plan.n_effective == 3
+    sp = jobs.build_plan([plain_pdf], "smart", threshold=0.70)
+    assert sp.entries[0].cover_removed == 0
+    assert sp.entries[0].n_effective == 3
 
 
-def test_build_plan_rejects_missing(tmp_path):
-    with pytest.raises(PdfError):
-        jobs.build_plan(tmp_path / "nope.pdf", "smart", threshold=0.70)
+def test_build_plan_flags_unopenable_file(tmp_path, plain_pdf):
+    sp = jobs.build_plan([plain_pdf, tmp_path / "nope.pdf"], "smart", threshold=0.70)
+    assert sp.has_errors
+    assert sp.layout is None                 # no plan while a file is broken
+    assert sp.entries[1].error and not sp.entries[1].ok
+    assert sp.entries[0].ok
 
 
-# ---- pass PDFs map to the right source pages ----------------------
+# ---- pass PDFs map to the right source pages --------------------
 
 def test_pass_pdfs_target_correct_source_pages(cover_pdf, tmp_path):
-    plan = jobs.build_plan(cover_pdf, "smart", threshold=0.70)
-
-    even = jobs.build_pass_pdf(plan, "even", tmp_path)
-    odd = jobs.build_pass_pdf(plan, "odd", tmp_path)
-
+    sp = jobs.build_plan([cover_pdf], "smart", threshold=0.70)
+    even = jobs.build_pass_pdf(sp, "even", tmp_path)
+    odd = jobs.build_pass_pdf(sp, "odd", tmp_path)
     with pikepdf.open(even) as p:
         assert len(p.pages) == 2          # effective page 2 (source 3) + blank pad
     with pikepdf.open(odd) as p:
         assert len(p.pages) == 2          # effective pages 1, 3 (source 2, 4)
 
 
-def test_build_subset_appends_blank(plain_pdf, tmp_path):
-    out = tmp_path / "sub.pdf"
-    build_subset(plain_pdf, [1, 2], out, append_blank=True)
-    with pikepdf.open(out) as p:
-        assert len(p.pages) == 3
+def test_multi_file_plan_and_pass_pdfs(tmp_path):
+    a = _write(tmp_path / "a.pdf", cover=True, music_pages=3)    # eff 3 -> padded 4
+    b = _write(tmp_path / "b.pdf", cover=False, music_pages=4)   # eff 4 (last, not padded)
+    sp = jobs.build_plan([a, b], "smart", threshold=0.70)
+    assert sp.n_files == 2 and not sp.has_errors
+    assert sp.layout.total == 8
+    assert sp.layout.starts == (1, 5)            # b starts on an odd (front) page
+
+    even = jobs.build_pass_pdf(sp, "even", tmp_path)
+    odd = jobs.build_pass_pdf(sp, "odd", tmp_path)
+    with pikepdf.open(even) as p:
+        assert len(p.pages) == 4          # a2, a-blank, b2, b4
+    with pikepdf.open(odd) as p:
+        assert len(p.pages) == 4          # a1, a3, b1, b3

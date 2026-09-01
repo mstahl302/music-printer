@@ -1,13 +1,11 @@
-"""Drive the two-pass state machine headlessly with printing.* mocked out.
+"""Drive the two-pass state machine headlessly with printing.* mocked.
 
-No real CUPS calls: submit returns fake job ids, job_status is scripted.
-Verifies the READY -> PASS1 -> WAIT_FOR_FLIP -> PASS2 -> DONE path, the
-single-page shortcut, and cancel.
+No real CUPS calls. Covers a single-file list, a multi-file list, the
+single-page shortcut, the run dialog phases, the flip cue, and cancel.
 """
 
 import time
 
-import pymupdf
 import pytest
 
 import main
@@ -18,11 +16,9 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 class FakePrinting:
-    """Stand-in for musicprinter.printing, scripted per test."""
-
     def __init__(self, statuses):
-        self.statuses = list(statuses)      # values job_status returns, in order
-        self.submitted = []                 # (title,) per submit
+        self.statuses = list(statuses)
+        self.submitted = []          # lp -t title per submit
         self.canceled = []
         self._n = 0
 
@@ -47,9 +43,8 @@ class FakePrinting:
 
 @pytest.fixture
 def no_dialogs(monkeypatch):
-    monkeypatch.setattr(main.messagebox, "showinfo", lambda *a, **k: None)
-    monkeypatch.setattr(main.messagebox, "showwarning", lambda *a, **k: None)
-    monkeypatch.setattr(main.messagebox, "showerror", lambda *a, **k: None)
+    for name in ("showinfo", "showwarning", "showerror"):
+        monkeypatch.setattr(main.messagebox, name, lambda *a, **k: None)
     monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: True)
 
 
@@ -59,103 +54,77 @@ def _pump(app, until, timeout=6.0):
         app.update()
         if until():
             return
-        time.sleep(0.03)
+        time.sleep(0.02)
     raise AssertionError(f"timed out in state {app.state!r}")
 
 
-def _app_with(monkeypatch, fake, pdf):
+def _app_with(monkeypatch, fake, pdfs):
     monkeypatch.setattr(main, "printing", fake)
     app = main.App()
     app.update()
-    app.source_path = pdf
-    app.file_label.config(text=pdf.name)
-    app._recompute_plan()
-    _pump(app, lambda: app.plan is not None)
+    app.filelist.set_files(list(pdfs))
+    app._recompute()
+    _pump(app, lambda: app.setplan is not None)
     return app
 
 
-def test_two_pass_happy_path(tmp_path, monkeypatch, no_dialogs):
+def _passes(fake):
+    return [t.rsplit(" · ", 1)[1] for t in fake.submitted]
+
+
+def test_single_file_two_pass(tmp_path, monkeypatch, no_dialogs):
     fake = FakePrinting(["completed"])
-    pdf = _write(tmp_path / "c.pdf", cover=True, music_pages=4)  # n_eff = 4 -> two pass
-    app = _app_with(monkeypatch, fake, pdf)
+    pdf = _write(tmp_path / "c.pdf", cover=True, music_pages=4)     # eff 4 -> two pass
+    app = _app_with(monkeypatch, fake, [pdf])
 
-    app._start()
-    _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
-
-    app._start_pass2()
-    _pump(app, lambda: app.state == main.DONE)
-
-    assert [t.rsplit(" — ", 1)[1] for t in fake.submitted] == ["even", "odd"]
-    app._on_close()
-
-
-def test_single_page_skips_flip(tmp_path, monkeypatch, no_dialogs):
-    fake = FakePrinting(["completed"])
-    pdf = _write(tmp_path / "s.pdf", cover=True, music_pages=1)  # n_eff = 1 -> single
-    app = _app_with(monkeypatch, fake, pdf)
-    assert app.plan.passes.single_pass is True
-
-    app._start()
-    _pump(app, lambda: app.state == main.DONE)
-
-    assert len(fake.submitted) == 1 and fake.submitted[0].endswith("single")
-    app._on_close()
-
-
-def test_cancel_during_pass1_returns_to_ready(tmp_path, monkeypatch, no_dialogs):
-    fake = FakePrinting(["processing"])
-    pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
-    app = _app_with(monkeypatch, fake, pdf)
-
-    app._start()
-    _pump(app, lambda: app.state == main.PRINTING_PASS1 and app._job_id is not None)
-
-    fake.statuses = ["canceled"]          # next poll reports the cancel landed
-    fake._n = 0
-    app._cancel()
-    _pump(app, lambda: app.state == main.READY)
-
-    assert fake.canceled == ["FAKE-1"]
-    app._on_close()
-
-
-def test_odd_effective_count_pads_pass1(tmp_path, monkeypatch, no_dialogs):
-    fake = FakePrinting(["completed"])
-    pdf = _write(tmp_path / "c.pdf", cover=True, music_pages=5)  # n_eff = 5 -> pad blank
-    app = _app_with(monkeypatch, fake, pdf)
-    assert app.plan.passes.pad_blank is True
-
-    app._start()
-    _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
-    import pikepdf
-    pass1 = next(app._tmpdir.glob("*pass1.pdf"))
-    with pikepdf.open(pass1) as p:
-        assert len(p.pages) == 3          # effective pages 2, 4 + blank
-    app._start_pass2()
-    _pump(app, lambda: app.state == main.DONE)
-    app._on_close()
-
-
-# ---- the run dialog ------------------------------------------------
-
-def test_dialog_tracks_phases(tmp_path, monkeypatch, no_dialogs):
-    fake = FakePrinting(["completed"])
-    pdf = _write(tmp_path / "c.pdf", cover=True, music_pages=4)
-    app = _app_with(monkeypatch, fake, pdf)
-
-    app._start()
-    assert app.dialog is not None
+    app._start_run(app.setplan)
     _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
     assert app.dialog.phase == "flip"
 
     app._start_pass2()
     _pump(app, lambda: app.state == main.DONE)
-    assert app.dialog.phase == "done"
+    assert _passes(fake) == ["even", "odd"]
     assert app.dialog._primary_btn.cget("text") == "Close"
+    app._on_close()
 
-    app._close_dialog()
+
+def test_multi_file_run(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    a = _write(tmp_path / "a.pdf", cover=True, music_pages=3)
+    b = _write(tmp_path / "b.pdf", cover=False, music_pages=4)
+    c = _write(tmp_path / "c.pdf", cover=False, music_pages=6)
+    app = _app_with(monkeypatch, fake, [a, b, c])
+    assert app.setplan.n_files == 3
     assert app.dialog is None
-    assert app.state == main.DONE          # main window keeps "Print another"
+
+    app._start_run(app.setplan)
+    assert app.dialog.title() == "Printing — 3 songs"
+    _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
+    app._start_pass2()
+    _pump(app, lambda: app.state == main.DONE)
+    assert _passes(fake) == ["even", "odd"]
+    app._on_close()
+
+
+def test_single_page_skips_flip(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    pdf = _write(tmp_path / "s.pdf", cover=True, music_pages=1)     # eff 1 -> single pass
+    app = _app_with(monkeypatch, fake, [pdf])
+    assert app.setplan.single_pass is True
+
+    app._start_run(app.setplan)
+    _pump(app, lambda: app.state == main.DONE)
+    assert _passes(fake) == ["single"]
+    app._on_close()
+
+
+def test_preview_blocked_by_unopenable_file(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    good = _write(tmp_path / "g.pdf", cover=False, music_pages=4)
+    app = _app_with(monkeypatch, fake, [good, tmp_path / "missing.pdf"])
+    assert app.setplan.has_errors
+    assert app._preview_ok() is False
+    assert not app.preview_btn._enabled
     app._on_close()
 
 
@@ -164,23 +133,35 @@ def test_flip_cue_plays_ping(tmp_path, monkeypatch, no_dialogs):
     calls = []
     monkeypatch.setattr(main.subprocess, "Popen",
                         lambda cmd, **kw: calls.append(cmd) or _Dummy())
-
     fake = FakePrinting(["completed"])
     pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
-    app = _app_with(monkeypatch, fake, pdf)
-    app._start()
+    app = _app_with(monkeypatch, fake, [pdf])
+    app._start_run(app.setplan)
     _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
-
     assert calls == [["afplay", main.FLIP_SOUND]]
+    app._on_close()
+
+
+def test_cancel_during_pass1_returns_to_ready(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["processing"])
+    pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
+    app = _app_with(monkeypatch, fake, [pdf])
+    app._start_run(app.setplan)
+    _pump(app, lambda: app.state == main.PRINTING_PASS1 and app._job_id is not None)
+
+    fake.statuses = ["canceled"]
+    fake._n = 0
+    app._cancel()
+    _pump(app, lambda: app.state == main.READY)
+    assert fake.canceled == ["FAKE-1"]
     app._on_close()
 
 
 def test_cancel_during_pass2_warns_about_feed_tray(tmp_path, monkeypatch, no_dialogs):
     fake = FakePrinting(["completed"])
     pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
-    app = _app_with(monkeypatch, fake, pdf)
-
-    app._start()
+    app = _app_with(monkeypatch, fake, [pdf])
+    app._start_run(app.setplan)
     _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
 
     fake.statuses = ["processing"]
@@ -192,7 +173,6 @@ def test_cancel_during_pass2_warns_about_feed_tray(tmp_path, monkeypatch, no_dia
     fake._n = 0
     app._cancel()
     _pump(app, lambda: app.state == main.DONE_ERROR)
-
     assert app.dialog.phase == "cancelled"
     assert "feed tray" in app.dialog._detail.cget("text")
     assert fake.canceled == ["FAKE-2"]

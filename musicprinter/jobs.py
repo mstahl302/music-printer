@@ -1,6 +1,8 @@
-"""Turn a source PDF + strip mode into a concrete print plan, and build the
-per-pass temp PDFs. No UI, no threads, no printing — main.py drives the
-actual submit / track / flip-gate state machine using musicprinter.printing.
+"""Turn an ordered list of PDFs + strip mode into a concrete print plan,
+and build the per-pass mega-PDFs. No UI, no threads, no printing — main.py
+drives the submit / track / flip-gate state machine.
+
+The everyday case is a list of one file; nothing about it is special.
 """
 
 from __future__ import annotations
@@ -10,82 +12,104 @@ from pathlib import Path
 
 from . import covers, pdfio
 from .covers.base import CoverMatch
-from .duplex import PrintPlan, plan_passes
+from .duplex import SetLayout, plan_set
 
 
 @dataclass(frozen=True)
-class Plan:
-    source_path: Path
-    n_source_pages: int
-    strip_mode: str
-    cover: CoverMatch | None      # the match being applied, or None
+class FileEntry:
+    path: Path
+    n_source: int                 # 0 when the file can't be opened
+    cover: CoverMatch | None
     n_effective: int
-    passes: PrintPlan
+    error: str | None = None      # human-readable reason it can't be printed
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
 
     @property
     def cover_removed(self) -> int:
         return len(self.cover.pages) if self.cover else 0
 
+
+@dataclass(frozen=True)
+class SetPlan:
+    entries: tuple[FileEntry, ...]   # every file the user added, in order
+    strip_mode: str
+    layout: SetLayout | None         # None while any file has an error
+
+    @property
+    def ok_entries(self) -> list[FileEntry]:
+        return [e for e in self.entries if e.ok]
+
+    @property
+    def has_errors(self) -> bool:
+        return any(not e.ok for e in self.entries)
+
+    @property
+    def n_files(self) -> int:
+        return len(self.ok_entries)
+
     @property
     def sheets_to_prepare(self) -> int:
-        return self.passes.sheets_per_pass
+        return self.layout.sheets_per_pass if self.layout else 0
 
     @property
-    def thumbnail_source_index0(self) -> int:
-        """Source page index (0-based) that becomes effective page 1."""
-        return self.cover_removed
+    def single_pass(self) -> bool:
+        return bool(self.layout and self.layout.single_pass)
 
-    def cover_summary(self) -> str:
-        mode, m = self.strip_mode, self.cover
-        if mode == "none":
-            return "Cover removal off"
-        if mode == "always":
-            return ("Forced — first page removed" if m
-                    else "Forced — file is 1 page, nothing removed")
-        # smart
-        if m is None:
-            return f"Smart — no cover detected, all {self.n_source_pages} pages kept"
-        if m.confidence >= 0.95:
-            return f"Smart — {m.detector} cover detected ({m.confidence:.2f}), page 1 removed"
-        return f"Smart — likely cover ({m.confidence:.2f}), page 1 removed"
+    @property
+    def run_title(self) -> str:
+        ok = self.ok_entries
+        if len(ok) == 1:
+            return f"Printing — {ok[0].path.name}"
+        return f"Printing — {len(ok)} songs"
 
 
-def build_plan(source_path, strip_mode: str, *, threshold: float) -> Plan:
-    """Inspect the PDF, run cover detection, and compute the two-pass plan.
+def _inspect_one(path: Path, strip_mode: str, threshold: float) -> FileEntry:
+    try:
+        n_src, needs_pw = pdfio.inspect(path)
+    except pdfio.PdfError:
+        return FileEntry(path, 0, None, 0, error="Can't open this PDF")
+    if needs_pw:
+        return FileEntry(path, 0, None, 0, error="This PDF is password-protected")
+    if n_src == 0:
+        return FileEntry(path, 0, None, 0, error="This PDF has no pages")
 
-    Raises :class:`pdfio.PdfError` for an unreadable, encrypted, or empty PDF.
-    """
-    source_path = Path(source_path)
-    n_pages, needs_password = pdfio.inspect(source_path)
-    if needs_password:
-        raise pdfio.PdfError("This PDF is password-protected. Music Printer can't open it.")
-    if n_pages == 0:
-        raise pdfio.PdfError("This PDF has no pages.")
-
-    match = covers.detect_cover(source_path, strip_mode, threshold=threshold)
+    match = covers.detect_cover(path, strip_mode, threshold=threshold)
     removed = len(match.pages) if match else 0
-    if removed >= n_pages:          # never strip the whole document
+    if removed >= n_src:                 # never strip the whole document
         match, removed = None, 0
-
-    n_effective = n_pages - removed
-    return Plan(source_path, n_pages, strip_mode, match, n_effective, plan_passes(n_effective))
+    return FileEntry(path, n_src, match, n_src - removed)
 
 
-def _to_source_pages(effective_pages, removed: int) -> list[int]:
-    return [p + removed for p in effective_pages]
+def build_plan(files, strip_mode: str, *, threshold: float) -> SetPlan:
+    """Inspect every file, run cover detection, and (if all files are OK) plan
+    the combined two-pass job."""
+    entries = tuple(_inspect_one(Path(f), strip_mode, threshold) for f in files)
+    ok = [e for e in entries if e.ok]
+    layout = plan_set([e.n_effective for e in ok]) if ok and all(e.ok for e in entries) else None
+    return SetPlan(entries, strip_mode, layout)
 
 
-def build_pass_pdf(plan: Plan, which: str, out_dir) -> Path:
-    """Build the temp PDF for a pass. ``which`` in {"even", "odd", "single"}."""
-    removed = plan.cover_removed
-    if which == "even":
-        pages = _to_source_pages(plan.passes.even_pages, removed)
-        return pdfio.build_subset(plan.source_path, pages,
-                                  pdfio.pass_pdf_path(out_dir, "pass1"),
-                                  append_blank=plan.passes.pad_blank)
-    if which in ("odd", "single"):
-        pages = _to_source_pages(plan.passes.odd_pages, removed)
-        tag = "single" if which == "single" else "pass2"
-        return pdfio.build_subset(plan.source_path, pages,
-                                  pdfio.pass_pdf_path(out_dir, tag))
-    raise ValueError(f"unknown pass {which!r}")
+def _pass_refs(plan: SetPlan, which: str):
+    """(src_path, page_1indexed) | (None, None) for each page of the pass."""
+    assert plan.layout is not None
+    ok = plan.ok_entries
+    refs = plan.layout.odd_refs() if which in ("odd", "single") else plan.layout.even_refs()
+    out = []
+    for file_idx, eff_page in refs:
+        if eff_page is None:
+            out.append((None, None))
+        else:
+            e = ok[file_idx]
+            out.append((e.path, eff_page + e.cover_removed))
+    return out
+
+
+def build_pass_pdf(plan: SetPlan, which: str, out_dir) -> Path:
+    """Build a mega-PDF for a pass. ``which`` in {"even", "odd", "single"}."""
+    tag = {"even": "pass1", "odd": "pass2", "single": "single"}.get(which)
+    if tag is None:
+        raise ValueError(f"unknown pass {which!r}")
+    return pdfio.build_pages(_pass_refs(plan, which), pdfio.pass_pdf_path(out_dir, tag))

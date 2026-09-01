@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Music Printer — Tkinter front-end and two-pass state machine.
 
-Pick a printer and a PDF, choose how to handle a vendor cover sheet, hit
-Start. A modal run dialog then owns the run: it prints the EVEN pages,
-waits for the printer, asks you to flip the stack (short edge), and prints
-the ODD pages onto the backs. See docs/specification.md and
-docs/spec_guided_print_dialog.md.
+The main window holds an ordered list of one or more PDFs. Add files, drag
+them into performance order, hit Preview. The preview dialog's Start hands
+off to the run dialog, which prints the whole set as one two-pass job with
+one flip. See docs/specification.md, docs/spec_guided_print_dialog.md and
+docs/spec_batch_printing.md.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from musicprinter import jobs, printing, rundialog, settings, widgets
-from musicprinter.pdfio import PdfError
+from musicprinter.pdfio import PdfError, render_thumbnail_png
 
 # UI label  ->  strip mode
 COVER_MODES = {
@@ -34,8 +34,6 @@ MODE_TO_LABEL = {v: k for k, v in COVER_MODES.items()}
 DEFAULT_COVER_LABEL = "Smart Strip (remove if detected)"
 
 FLIP_SOUND = "/System/Library/Sounds/Ping.aiff"
-
-# how often to poll CUPS for job status (ms) — lowered by the test suite
 _POLL_MS = max(20, int(os.environ.get("MUSIC_PRINTER_POLL_MS", "700")))
 
 # state machine
@@ -48,15 +46,252 @@ DONE = "done"
 DONE_ERROR = "done_error"
 
 _PRINTING = {PRINTING_PASS1, PRINTING_PASS2, PRINTING_SINGLE}
-
-_PASS_HEADING = {
-    "even": "Printing — pass 1 of 2",
-    "odd": "Printing — pass 2 of 2",
-    "single": "Printing",
-}
+_PASS_HEADING = {"even": "Printing — pass 1 of 2", "odd": "Printing — pass 2 of 2",
+                 "single": "Printing"}
 _PASS_SIDE = {"even": "Even pages", "odd": "Odd pages", "single": "Pages"}
 
+_PINK_BG, _PINK_FG = "#f2c7d6", "#8a2c4c"
 
+
+# ============================================================ file list
+class FileList(ttk.Frame):
+    """Scrollable rows: drag handle, filename, page count / warning, remove."""
+
+    VISIBLE = 6
+    ROW_PX = 34
+
+    def __init__(self, parent, *, on_change) -> None:
+        super().__init__(parent)
+        self._on_change = on_change
+        self.files: list[Path] = []
+        self._entry_by_path: dict[str, jobs.FileEntry] = {}
+        self._drag_from: int | None = None
+
+        self._canvas = tk.Canvas(self, highlightthickness=0, height=self.ROW_PX * self.VISIBLE)
+        self._sb = ttk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
+        self._inner = ttk.Frame(self._canvas)
+        self._winid = self._canvas.create_window((0, 0), window=self._inner, anchor="nw")
+        self._canvas.configure(yscrollcommand=self._sb.set)
+        self._canvas.grid(row=0, column=0, sticky="nsew")
+        self._sb.grid(row=0, column=1, sticky="ns")
+        self.columnconfigure(0, weight=1)
+        try:
+            self._canvas.configure(bg=ttk.Style().lookup("TFrame", "background") or None)
+        except tk.TclError:
+            pass
+        self._inner.bind("<Configure>",
+                         lambda _e: self._canvas.configure(scrollregion=self._canvas.bbox("all")))
+        self._canvas.bind("<Configure>",
+                          lambda e: self._canvas.itemconfigure(self._winid, width=e.width))
+
+    def set_files(self, files) -> None:
+        self.files = list(files)
+        self._render()
+
+    def add(self, paths) -> None:
+        self.files.extend(Path(p) for p in paths)
+        self._render()
+        self._on_change()
+
+    def set_entries(self, entries) -> None:
+        self._entry_by_path = {str(e.path): e for e in entries}
+        self._render()
+
+    # ---- rendering ---------------------------------------------
+    def _render(self) -> None:
+        for w in self._inner.winfo_children():
+            w.destroy()
+        for i, path in enumerate(self.files):
+            row = ttk.Frame(self._inner, padding=(6, 5))
+            row.grid(row=i, column=0, sticky="ew")
+            row.columnconfigure(1, weight=1)
+            row._path = path  # type: ignore[attr-defined]
+
+            grip = ttk.Label(row, text="⠿", cursor="fleur")
+            grip.grid(row=0, column=0, padx=(0, 8))
+            grip.bind("<ButtonPress-1>", lambda _e, idx=i: self._drag_start(idx))
+            grip.bind("<ButtonRelease-1>", self._drag_drop)
+
+            ttk.Label(row, text=path.name, anchor="w").grid(row=0, column=1, sticky="ew")
+
+            e = self._entry_by_path.get(str(path))
+            if e is None:
+                info = ttk.Label(row, text="…", foreground="#888")
+            elif e.error:
+                info = ttk.Label(row, text=f"⚠ {e.error}", foreground="#b23")
+            else:
+                info = ttk.Label(row, text=f"{e.n_effective} pages", foreground="#888")
+            info.grid(row=0, column=2, padx=8)
+
+            rm = widgets.button(row, "×", widgets.RED, lambda p=path: self._remove(p))
+            rm.configure(padx=7, pady=1, font=("TkDefaultFont", 11))
+            rm.grid(row=0, column=3)
+
+    def _remove(self, path: Path) -> None:
+        self.files = [p for p in self.files if p != path]
+        self._render()
+        self._on_change()
+
+    # ---- drag to reorder -------------------------------------
+    def _drag_start(self, idx: int) -> None:
+        self._drag_from = idx
+
+    def _drag_drop(self, event) -> None:
+        src = self._drag_from
+        self._drag_from = None
+        if src is None:
+            return
+        w = self.winfo_containing(event.x_root, event.y_root)
+        while w is not None and getattr(w, "_path", None) is None:
+            w = getattr(w, "master", None)
+        rows = self._inner.winfo_children()
+        dst = rows.index(w) if w in rows else src
+        if dst != src:
+            p = self.files.pop(src)
+            self.files.insert(dst, p)
+            self._render()
+            self._on_change()
+
+    def set_enabled(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+        for row in self._inner.winfo_children():
+            for child in row.winfo_children():
+                try:
+                    child.configure(state=state)
+                except tk.TclError:
+                    pass
+
+
+# ========================================================= preview dialog
+class PreviewDialog(tk.Toplevel):
+    def __init__(self, parent, *, setplan: jobs.SetPlan, on_start) -> None:
+        super().__init__(parent)
+        self.title("Preview")
+        self.resizable(False, False)
+        self.transient(parent)
+        self._setplan = setplan
+        self._on_start = on_start
+        self._thumbs: list[tk.PhotoImage] = []
+        self._thumb_labels: list[ttk.Label] = []
+        self._q: queue.Queue = queue.Queue()
+
+        frm = ttk.Frame(self, padding=16)
+        frm.grid(sticky="nsew")
+
+        canvas = tk.Canvas(frm, highlightthickness=0, width=460,
+                           height=min(430, 96 * max(1, setplan.n_files) + 8))
+        sb = ttk.Scrollbar(frm, orient="vertical", command=canvas.yview)
+        body = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=body, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        sb.grid(row=0, column=1, sticky="ns")
+        body.bind("<Configure>",
+                  lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        try:
+            canvas.configure(bg=ttk.Style().lookup("TFrame", "background") or None)
+        except tk.TclError:
+            pass
+
+        layout = setplan.layout
+        for i, e in enumerate(setplan.ok_entries):
+            block = ttk.Frame(body, padding=(0, 8))
+            block.grid(row=i, column=0, sticky="ew")
+            thumb = ttk.Label(block, text="…", width=10, anchor="center",
+                              relief="solid", borderwidth=1)
+            thumb.grid(row=0, column=0, rowspan=2, padx=(0, 12))
+            self._thumb_labels.append(thumb)
+            ttk.Label(block, text=e.path.name, font=("TkDefaultFont", 12, "bold")).grid(
+                row=0, column=1, sticky="w")
+            line = ttk.Frame(block)
+            line.grid(row=1, column=1, sticky="w", pady=(2, 0))
+            col = 0
+            if e.cover_removed:
+                chip = tk.Label(line, text=" cover removed ", bg=_PINK_BG, fg=_PINK_FG,
+                                font=("TkDefaultFont", 9))
+                chip.grid(row=0, column=col, padx=(0, 6))
+                col += 1
+            sheets = layout.file_sheets(i) if layout else 0
+            ttk.Label(line, text=f"{e.n_effective} pages · {sheets} sheets",
+                      foreground="#777").grid(row=0, column=col)
+
+        bar = ttk.Frame(frm, padding=(0, 14, 0, 0))
+        bar.grid(row=1, column=0, columnspan=2, sticky="ew")
+        bar.columnconfigure(0, weight=1)
+        n = setplan.sheets_to_prepare
+        ttk.Label(bar, wraplength=320, justify="left",
+                  text=(f"Printing requires {n} sheet{'s' if n != 1 else ''} of paper. "
+                        "When you're ready, click Start.")).grid(row=0, column=0, sticky="w")
+        widgets.button(bar, "Start", widgets.BLUE, self._start, big=True).grid(row=0, column=1)
+
+        self._center_on(parent)
+        self.after(0, self._grab)
+        self.after(60, self._pump)
+        threading.Thread(target=self._render_thumbs,
+                         args=([e.path for e in setplan.ok_entries],
+                               [e.cover_removed for e in setplan.ok_entries]),
+                         daemon=True).start()
+
+    def _render_thumbs(self, paths, offsets) -> None:
+        for i, (p, off) in enumerate(zip(paths, offsets)):
+            try:
+                png = render_thumbnail_png(p, off, max_px=132)
+            except Exception:
+                png = None
+            self._q.put((i, png))
+
+    def _pump(self) -> None:
+        try:
+            while True:
+                i, png = self._q.get_nowait()
+                if png and i < len(self._thumb_labels):
+                    try:
+                        img = tk.PhotoImage(data=base64.b64encode(png).decode(), format="png")
+                        self._thumbs.append(img)
+                        self._thumb_labels[i].configure(image=img, text="")
+                    except tk.TclError:
+                        pass
+        except queue.Empty:
+            pass
+        if self.winfo_exists():
+            self.after(80, self._pump)
+
+    def _start(self) -> None:
+        plan = self._setplan
+        self.close()
+        self._on_start(plan)
+
+    def close(self) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+
+    def _grab(self) -> None:
+        try:
+            self.grab_set()
+        except tk.TclError:
+            self.after(80, self._grab_once)
+
+    def _grab_once(self) -> None:
+        try:
+            self.grab_set()
+        except tk.TclError:
+            pass
+
+    def _center_on(self, parent) -> None:
+        try:
+            self.update_idletasks()
+            px, py = parent.winfo_rootx(), parent.winfo_rooty()
+            pw, ph = parent.winfo_width(), parent.winfo_height()
+            w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+            self.geometry(f"+{px + max(0, (pw - w) // 2)}+{py + max(0, (ph - h) // 3)}")
+        except tk.TclError:
+            pass
+
+
+# ================================================================ app
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -68,36 +303,30 @@ class App(tk.Tk):
         self._tmpdir = Path(tempfile.mkdtemp(prefix="music-printer-"))
         self._q: queue.Queue = queue.Queue()
 
-        # inputs
-        self.printer = tk.StringVar(value=self.cfg["last_printer"])  # real CUPS queue name
-        self.printer_display = tk.StringVar(value="")                # friendly text on the button
+        self.printer = tk.StringVar(value=self.cfg["last_printer"])
+        self.printer_display = tk.StringVar(value="")
         self._printers: dict[str, printing.Printer] = {}
         self.cover_label = tk.StringVar(
             value=MODE_TO_LABEL.get(self.cfg["strip_mode"], DEFAULT_COVER_LABEL))
-        self.source_path: Path | None = None
 
-        # derived
-        self.plan: jobs.Plan | None = None
+        self.setplan: jobs.SetPlan | None = None
         self._plan_token = 0
-        self._thumb_img: tk.PhotoImage | None = None
 
-        # run state
         self.state = READY
         self.dialog: rundialog.RunDialog | None = None
         self._job_id: str | None = None
         self._gone_polls = 0
         self._canceling = False
-        self._pass: str = ""
+        self._pass = ""
 
-        # main-window display
         self.printer_warn = tk.StringVar(value="")
-        self.preview_text = tk.StringVar(value="Choose a printer and a PDF.")
+        self.status = tk.StringVar(value="Add one or more PDFs.")
 
         self._build()
         self._load_printers()
         self.after(80, self._pump)
 
-    # ================================================================ layout
+    # ------------------------------------------------------------ layout
     def _build(self) -> None:
         pad = {"padx": 10, "pady": 5}
         frm = ttk.Frame(self, padding=12)
@@ -110,41 +339,34 @@ class App(tk.Tk):
         ttk.Label(frm, textvariable=self.printer_warn, foreground="#b00").grid(
             row=1, column=1, columnspan=2, sticky="w", padx=10)
 
-        widgets.button(frm, "Choose PDF…", widgets.BLUE, self._pick_file).grid(
-            row=2, column=0, sticky="w", **pad)
-        self.file_label = ttk.Label(frm, text="No file chosen", width=44, anchor="w")
-        self.file_label.grid(row=2, column=1, columnspan=2, sticky="w", **pad)
-
-        ttk.Label(frm, text="Strip Cover Sheet:").grid(row=3, column=0, sticky="w", **pad)
+        ttk.Label(frm, text="Strip Cover Sheet:").grid(row=2, column=0, sticky="w", **pad)
         self.cover_menu = ttk.OptionMenu(
             frm, self.cover_label, self.cover_label.get(), *COVER_MODES,
-            command=lambda _=None: self._recompute_plan())
-        self.cover_menu.grid(row=3, column=1, columnspan=2, sticky="ew", **pad)
+            command=lambda _=None: self._recompute())
+        self.cover_menu.grid(row=2, column=1, columnspan=2, sticky="ew", **pad)
 
-        prev = ttk.LabelFrame(frm, text="Plan", padding=10)
-        prev.grid(row=4, column=0, columnspan=3, sticky="ew", **pad)
-        prev.columnconfigure(1, weight=1)
-        self.thumb_label = ttk.Label(prev, text="(no preview)", width=20,
-                                     anchor="center", relief="solid", borderwidth=1)
-        self.thumb_label.grid(row=0, column=0, rowspan=2, padx=(0, 12), pady=2, sticky="n")
-        ttk.Label(prev, textvariable=self.preview_text, justify="left",
-                  anchor="w").grid(row=0, column=1, sticky="nw")
+        self.filelist = FileList(frm, on_change=self._recompute)
+        self.filelist.grid(row=3, column=0, columnspan=3, sticky="ew", **pad)
 
-        self.start_btn = widgets.button(frm, "Start", widgets.BLUE, self._start, big=True)
-        self.start_btn.grid(row=5, column=0, columnspan=3, **pad)
+        row = ttk.Frame(frm)
+        row.grid(row=4, column=0, columnspan=3, sticky="ew", **pad)
+        row.columnconfigure(0, weight=1)
+        self.add_btn = widgets.button(row, "Add PDFs…", widgets.BLUE, self._pick_files)
+        self.add_btn.grid(row=0, column=0, sticky="w")
+        self.preview_btn = widgets.button(row, "Preview", widgets.BLUE, self._open_preview, big=True)
+        self.preview_btn.grid(row=0, column=1, sticky="e")
 
-        self.another_btn = widgets.button(frm, "Print another", widgets.BLUE, self._reset, big=True)
-        self.another_btn.grid(row=5, column=0, columnspan=3, **pad)
-        self.another_btn.grid_remove()
+        ttk.Label(frm, textvariable=self.status, foreground="#555").grid(
+            row=5, column=0, columnspan=3, sticky="w", padx=10, pady=(2, 0))
 
         self._set_state(READY)
 
-    # ============================================================ printers
+    # ---------------------------------------------------------- printers
     def _load_printers(self) -> None:
         try:
             printers = printing.list_printers()
         except Exception as exc:
-            self.preview_text.set(f"Could not list printers: {exc}")
+            self.status.set(f"Could not list printers: {exc}")
             return
         self._printers = {p.name: p for p in printers}
         menu = self.printer_menu["menu"]
@@ -154,9 +376,8 @@ class App(tk.Tk):
             menu.add_command(label=label, command=lambda n=p.name: self._choose_printer(n))
         names = [p.name for p in printers]
         if self.printer.get() not in names:
-            default = next((p.name for p in printers if p.is_default),
-                           names[0] if names else "")
-            self.printer.set(default)
+            self.printer.set(next((p.name for p in printers if p.is_default),
+                                  names[0] if names else ""))
         self._sync_printer_display()
         self._check_printer()
 
@@ -169,107 +390,90 @@ class App(tk.Tk):
 
     def _sync_printer_display(self) -> None:
         p = self._printers.get(self.printer.get())
-        if p is None:
-            self.printer_display.set(self.printer.get())
-            return
-        self.printer_display.set(f"{p.label}  (default)" if p.is_default else p.label)
+        self.printer_display.set(
+            self.printer.get() if p is None
+            else (f"{p.label}  (default)" if p.is_default else p.label))
 
     def _check_printer(self) -> None:
         name = self.printer.get()
-        if name and printing.printer_state(name) == "disabled":
-            self.printer_warn.set("This printer is paused — jobs will queue but not print.")
-        else:
-            self.printer_warn.set("")
+        self.printer_warn.set(
+            "This printer is paused — jobs will queue but not print."
+            if name and printing.printer_state(name) == "disabled" else "")
 
-    # ========================================================= file + plan
-    def _pick_file(self) -> None:
+    # ------------------------------------------------------ files + plan
+    def _pick_files(self) -> None:
         start = self.cfg["last_folder"] or str(Path.home())
-        path = filedialog.askopenfilename(
-            title="Choose sheet music (PDF)", initialdir=start,
+        paths = filedialog.askopenfilenames(
+            title="Add sheet music (PDF)", initialdir=start,
             filetypes=[("PDF files", "*.pdf")])
-        if not path:
+        if not paths:
             return
-        self.source_path = Path(path)
-        self.file_label.config(text=self.source_path.name)
-        self.cfg["last_folder"] = str(self.source_path.parent)
+        self.cfg["last_folder"] = str(Path(paths[0]).parent)
         settings.save(self.cfg)
-        self._recompute_plan()
+        self.filelist.add(paths)
 
-    def _recompute_plan(self) -> None:
+    def _recompute(self) -> None:
         self.cfg["strip_mode"] = COVER_MODES[self.cover_label.get()]
         settings.save(self.cfg)
-        if self.state != READY or self.source_path is None:
+        if self.state != READY:
             return
-        self.plan = None
+        self.setplan = None
         self._plan_token += 1
         token = self._plan_token
-        self.preview_text.set("Reading PDF…")
-        self._set_thumb(None)
-        self._set_state(READY)
+        files = list(self.filelist.files)
+        if not files:
+            self.status.set("Add one or more PDFs.")
+            self._set_state(READY)
+            return
+        self.status.set("Reading…")
         threading.Thread(
             target=self._plan_worker,
-            args=(token, self.source_path, self.cfg["strip_mode"],
+            args=(token, files, self.cfg["strip_mode"],
                   float(self.cfg["confidence_threshold"])),
             daemon=True).start()
 
-    def _plan_worker(self, token: int, path: Path, mode: str, threshold: float) -> None:
+    def _plan_worker(self, token: int, files, mode: str, threshold: float) -> None:
         try:
-            plan = jobs.build_plan(path, mode, threshold=threshold)
-            self._q.put(("plan", token, plan))
-            try:
-                from musicprinter import pdfio
-                png = pdfio.render_thumbnail_png(path, plan.thumbnail_source_index0)
-            except Exception:
-                png = None
-            self._q.put(("thumb", token, png))
-        except PdfError as exc:
+            setplan = jobs.build_plan(files, mode, threshold=threshold)
+            self._q.put(("plan", token, setplan))
+        except Exception as exc:
             self._q.put(("plan_err", token, str(exc)))
-        except Exception as exc:  # unexpected
-            self._q.put(("plan_err", token, f"Could not read this PDF: {exc}"))
 
-    def _apply_plan(self, plan: jobs.Plan) -> None:
-        self.plan = plan
-        lines = [
-            f"Sheets of music to print:  {plan.n_effective}",
-            f"Cover: {plan.cover_summary()}",
-        ]
-        prep = f"Sheets of paper to prepare:  {plan.sheets_to_prepare}"
-        if plan.passes.pad_blank:
-            prep += "   (a blank sheet is added automatically on pass 1)"
-        lines.append(prep)
-        if plan.passes.single_pass and plan.n_effective <= 1:
-            lines.append("Single page — prints in one pass, no flip needed.")
-        self.preview_text.set("\n".join(lines))
+    def _apply_plan(self, setplan: jobs.SetPlan) -> None:
+        self.setplan = setplan
+        self.filelist.set_entries(setplan.entries)
+        bad = sum(1 for e in setplan.entries if not e.ok)
+        if bad:
+            self.status.set(f"{bad} file{'s' if bad != 1 else ''} can't be opened — "
+                            "remove them to preview.")
+        elif setplan.layout:
+            self.status.set(f"{setplan.n_files} file{'s' if setplan.n_files != 1 else ''} · "
+                            f"{setplan.sheets_to_prepare} sheets of paper")
         self._set_state(READY)
 
-    def _set_thumb(self, png: bytes | None) -> None:
-        if not png:
-            self._thumb_img = None
-            self.thumb_label.config(image="", text="(no preview)")
-            return
-        try:
-            self._thumb_img = tk.PhotoImage(data=base64.b64encode(png).decode(), format="png")
-            self.thumb_label.config(image=self._thumb_img, text="")
-        except tk.TclError:
-            self._thumb_img = None
-            self.thumb_label.config(image="", text="(no preview)")
-
     # ================================================================ run
-    def _start(self) -> None:
-        if self.plan is None or not self.printer.get() or self.dialog is not None:
+    def _open_preview(self) -> None:
+        if not self._preview_ok():
             return
+        PreviewDialog(self, setplan=self.setplan, on_start=self._start_run)
+
+    def _preview_ok(self) -> bool:
+        return (self.state == READY and self.setplan is not None
+                and self.setplan.n_files >= 1 and not self.setplan.has_errors
+                and self.setplan.layout is not None)
+
+    def _start_run(self, setplan: jobs.SetPlan) -> None:
+        self.setplan = setplan
         self._check_printer()
         if self.printer_warn.get() and not messagebox.askyesno(
                 "Printer paused", f"{self.printer_warn.get()}\n\nQueue the job anyway?"):
             return
-
         self.dialog = rundialog.RunDialog(
-            self, run_title=f"Printing — {self.source_path.name}",
+            self, run_title=setplan.run_title,
             on_cancel=self._cancel, on_continue=self._start_pass2,
             on_close=self._close_dialog)
         self.dialog.show_phase(rundialog.PREPARING, detail="Building pass 1…")
-
-        if self.plan.passes.single_pass:
+        if setplan.single_pass:
             self._begin_pass("single", PRINTING_SINGLE)
         else:
             self._begin_pass("even", PRINTING_PASS1)
@@ -286,27 +490,28 @@ class App(tk.Tk):
         if self.dialog:
             self.dialog.show_phase(rundialog.PRINTING, heading=_PASS_HEADING[which],
                                    detail="Sending…")
-        threading.Thread(
-            target=self._submit_worker,
-            args=(which, self.plan, self.printer.get()),
-            daemon=True).start()
+        threading.Thread(target=self._submit_worker,
+                         args=(which, self.setplan, self.printer.get()),
+                         daemon=True).start()
 
-    def _submit_worker(self, which: str, plan: "jobs.Plan", printer_name: str) -> None:
+    def _submit_worker(self, which: str, setplan: jobs.SetPlan, printer_name: str) -> None:
         try:
-            pdf = jobs.build_pass_pdf(plan, which, self._tmpdir)
-            title = f"{plan.source_path.name} — {which}"
+            pdf = jobs.build_pass_pdf(setplan, which, self._tmpdir)
             reverse = bool(self.cfg.get("reverse_page_order", True))
-            job_id = printing.submit(pdf, printer_name, title=title, reverse_order=reverse)
+            job_id = printing.submit(pdf, printer_name,
+                                     title=f"{setplan.run_title} · {which}",
+                                     reverse_order=reverse)
             settings.log(f"submit {which} job={job_id} file={pdf.name} "
-                         f"pages={plan.n_effective} mode={plan.strip_mode} reverse={reverse}")
+                         f"files={setplan.n_files} sheets={setplan.sheets_to_prepare} "
+                         f"mode={setplan.strip_mode} reverse={reverse}")
             self._q.put(("submitted", which, job_id))
         except Exception as exc:
             self._q.put(("submit_err", which, exc))
 
     def _detail(self, word: str) -> None:
         if self.dialog:
-            self.dialog.set_detail(f"{_PASS_SIDE.get(self._pass, 'Pages')} · {word} · "
-                                   f"job {self._job_id}")
+            self.dialog.set_detail(
+                f"{_PASS_SIDE.get(self._pass, 'Pages')} · {word} · job {self._job_id}")
 
     def _poll_job(self) -> None:
         if self.state not in _PRINTING or not self._job_id:
@@ -329,14 +534,11 @@ class App(tk.Tk):
             self._finish_pass_failed(f"The printer aborted job {self._job_id}.")
         elif st == "completed":
             self._finish_pass_ok()
-        else:  # gone — allow a few polls before trusting it
+        else:  # gone
             self._gone_polls += 1
-            if self._gone_polls >= 3:
-                self._finish_pass_ok()
-            else:
-                self.after(delay, self._poll_job)
+            (self._finish_pass_ok if self._gone_polls >= 3
+             else lambda: self.after(delay, self._poll_job))()
 
-    # ---- pass outcomes ------------------------------------------------
     def _finish_pass_ok(self) -> None:
         settings.log(f"pass ok state={self.state} job={self._job_id}")
         self._job_id = None
@@ -346,21 +548,22 @@ class App(tk.Tk):
                 self.dialog.show_phase(rundialog.FLIP)
                 self.dialog.bring_forward()
             self._play_flip_cue()
-        else:  # PASS2 or SINGLE
+        else:
             self._set_state(DONE)
             if self.dialog:
                 self.dialog.show_phase(rundialog.DONE, detail="Double-sided copy printed.")
 
     def _finish_pass_canceled(self) -> None:
-        settings.log(f"pass canceled state={self.state} job={self._job_id}")
+        settings.log(f"pass canceled state={self.state}")
         was_pass2 = self.state == PRINTING_PASS2
         self._job_id = None
         self._set_state(DONE_ERROR if was_pass2 else READY)
         if self.dialog:
-            detail = ("Some sheets are printed on one side only, and there may be "
-                      "back-printed sheets still in the printer's feed tray — pull "
-                      "those out before the next job.") if was_pass2 else ""
-            self.dialog.show_phase(rundialog.CANCELLED, detail=detail)
+            self.dialog.show_phase(
+                rundialog.CANCELLED,
+                detail=("Some sheets are printed on one side only, and there may be "
+                        "back-printed sheets still in the printer's feed tray — pull "
+                        "those out before the next job.") if was_pass2 else "")
 
     def _finish_pass_failed(self, message: str) -> None:
         settings.log(f"pass failed state={self.state}: {message}")
@@ -372,7 +575,6 @@ class App(tk.Tk):
         else:
             messagebox.showerror("Printing", message)
 
-    # ---- cancel -----------------------------------------------------
     def _cancel(self) -> None:
         if self.state == WAIT_FOR_FLIP:
             if messagebox.askyesno(
@@ -397,28 +599,12 @@ class App(tk.Tk):
         except Exception as exc:
             self._q.put(("cancel_err", exc))
 
-    # ---- dialog close / reset ------------------------------------
     def _close_dialog(self) -> None:
         if self.dialog:
             self.dialog.close()
             self.dialog = None
-        if self.state in (DONE, DONE_ERROR):
-            self.preview_text.set("Done — printed." if self.state == DONE
-                                  else "Stopped — some sheets are one-sided.")
-            self._set_state(self.state)
-        else:
-            self._set_state(READY)
-
-    def _reset(self) -> None:
-        self._cleanup_tmp()
-        self.source_path = None
-        self.plan = None
-        self._job_id = None
-        self._canceling = False
-        self.file_label.config(text="No file chosen")
-        self.preview_text.set("Choose a PDF.")
-        self._set_thumb(None)
         self._set_state(READY)
+        self._recompute()
 
     def _play_flip_cue(self) -> None:
         if os.environ.get("MUSIC_PRINTER_NO_SOUND"):
@@ -444,19 +630,14 @@ class App(tk.Tk):
 
     def _dispatch(self, kind: str, rest: list) -> None:
         if kind == "plan":
-            token, plan = rest
+            token, setplan = rest
             if token == self._plan_token and self.state == READY:
-                self._apply_plan(plan)
-        elif kind == "thumb":
-            token, png = rest
-            if token == self._plan_token:
-                self._set_thumb(png)
+                self._apply_plan(setplan)
         elif kind == "plan_err":
             token, msg = rest
             if token == self._plan_token and self.state == READY:
-                self.plan = None
-                self.preview_text.set(msg)
-                self._set_thumb(None)
+                self.setplan = None
+                self.status.set(msg)
                 self._set_state(READY)
         elif kind == "submitted":
             _which, job_id = rest
@@ -473,19 +654,16 @@ class App(tk.Tk):
             if self.dialog:
                 self.dialog.enable_cancel()
                 self.dialog.set_detail(f"Couldn't cancel — {exc}. Try again.")
-        # "cancel_ok" needs no action — _poll_job sees the terminal state
+        # "cancel_ok" — _poll_job sees the terminal state
 
     def _set_state(self, state: str) -> None:
         self.state = state
         inputs = "normal" if state == READY else "disabled"
         self.printer_menu.config(state=inputs)
         self.cover_menu.config(state=inputs)
-
-        start_ok = state == READY and self.plan is not None and bool(self.printer.get())
-        self.start_btn.set_enabled(start_ok)
-        (self.start_btn.grid if state == READY else self.start_btn.grid_remove)()
-        (self.another_btn.grid if state in (DONE, DONE_ERROR)
-         else self.another_btn.grid_remove)()
+        self.add_btn.set_enabled(state == READY)
+        self.filelist.set_enabled(state == READY)
+        self.preview_btn.set_enabled(self._preview_ok())
 
     # ============================================================= close
     def _cleanup_tmp(self) -> None:

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable
 
 import pikepdf
 import pymupdf
@@ -44,32 +43,36 @@ def render_thumbnail_png(path, page_index0: int, *, max_px: int = 360) -> bytes:
         doc.close()
 
 
-def build_subset(src_path, pages_1indexed: Iterable[int], out_path,
-                 *, append_blank: bool = False) -> Path:
-    """Write ``out_path`` containing ``pages_1indexed`` from ``src_path`` in order.
+def build_pages(refs, out_path, *, default_size=(612.0, 792.0)) -> Path:
+    """Write ``out_path`` from a mixed list of pages across several sources.
 
-    If ``append_blank`` is set, add one empty page matching the last
-    copied page's box (fallback: source page 1).
+    ``refs`` is a list of ``(src_path, page_1indexed)`` for a real page, or
+    ``(None, None)`` for a blank. Blanks take the media box of the most
+    recent real page (fallback: ``default_size``). Each source is opened
+    once.
     """
-    pages_1indexed = list(pages_1indexed)
-    src = pikepdf.open(src_path)
+    out_path = Path(out_path)
     dst = pikepdf.new()
+    open_src: dict[str, pikepdf.Pdf] = {}
+    last_wh = default_size
     try:
-        for p in pages_1indexed:
-            dst.pages.append(src.pages[p - 1])
-
-        if append_blank:
-            ref = dst.pages[-1] if len(dst.pages) else src.pages[0]
-            box = ref.MediaBox
-            w = float(box[2]) - float(box[0])
-            h = float(box[3]) - float(box[1])
-            dst.add_blank_page(page_size=(w, h))
-
-        out_path = Path(out_path)
+        for src_path, pageno in refs:
+            if src_path is None:
+                dst.add_blank_page(page_size=last_wh)
+                continue
+            key = str(src_path)
+            src = open_src.get(key)
+            if src is None:
+                src = open_src[key] = pikepdf.open(src_path)
+            page = src.pages[pageno - 1]
+            dst.pages.append(page)
+            box = page.MediaBox
+            last_wh = (float(box[2]) - float(box[0]), float(box[3]) - float(box[1]))
         dst.save(out_path)
         return out_path
     finally:
-        src.close()
+        for src in open_src.values():
+            src.close()
         dst.close()
 
 
