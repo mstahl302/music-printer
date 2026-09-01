@@ -162,6 +162,10 @@ class RunDialog(tk.Toplevel):
 
     def close(self) -> None:
         try:
+            self._bar.stop()          # kill the progressbar's autoincrement after-loop
+        except tk.TclError:
+            pass
+        try:
             self.grab_release()
         except tk.TclError:
             pass

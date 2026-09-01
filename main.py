@@ -57,32 +57,37 @@ _PINK_BG, _PINK_FG = "#f2c7d6", "#8a2c4c"
 _WHEEL_SEQS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
 
 
-def _enable_wheel(canvas, *, on_scroll=None) -> None:
-    """Mouse-over wheel/trackpad scrolling for a Canvas, only when it overflows."""
-    def wheel(e):
-        bb = canvas.bbox("all")
-        if not bb or bb[3] - bb[1] <= canvas.winfo_height():
-            return
-        if getattr(e, "num", 0) == 4:
-            canvas.yview_scroll(-1, "units")
-        elif getattr(e, "num", 0) == 5:
-            canvas.yview_scroll(1, "units")
-        else:
-            canvas.yview_scroll(int(-1 * e.delta), "units")
-        if on_scroll:
-            on_scroll()
+def _wheel_scroll(canvas, e) -> str:
+    """Scroll ``canvas`` for one wheel/trackpad event, only when it overflows.
 
-    def bind(_e=None):
-        for s in _WHEEL_SEQS:
-            canvas.bind_all(s, wheel)
+    Bound directly on the scrollable widgets (a `bind_all` on <Enter>/<Leave>
+    never fires on macOS because the inner frame covers the canvas)."""
+    bb = canvas.bbox("all")
+    if not bb or bb[3] - bb[1] <= canvas.winfo_height():
+        return "break"
+    num = getattr(e, "num", 0)
+    if num == 4:
+        canvas.yview_scroll(-2, "units")
+    elif num == 5:
+        canvas.yview_scroll(2, "units")
+    else:
+        step = int(-1 * e.delta)
+        step = max(-4, min(4, step)) or (-1 if e.delta >= 0 else 1)
+        canvas.yview_scroll(step, "units")
+    return "break"
 
-    def unbind(_e=None):
-        for s in _WHEEL_SEQS:
-            canvas.unbind_all(s)
 
-    canvas.bind("<Enter>", bind)
-    canvas.bind("<Leave>", unbind)
-    canvas.bind("<Destroy>", unbind)
+def _bind_scroll_tree(widget, canvas, *, focus_target=None) -> None:
+    """Bind wheel scrolling on ``widget`` and every current descendant."""
+    handler = lambda e: _wheel_scroll(canvas, e)
+    stack = [widget]
+    while stack:
+        w = stack.pop()
+        for seq in _WHEEL_SEQS:
+            w.bind(seq, handler, add="+")
+        if focus_target is not None:
+            w.bind("<Button-1>", lambda _e: focus_target.focus_set(), add="+")
+        stack.extend(w.winfo_children())
 
 
 def _elide(name: str, maxlen: int) -> str:
@@ -136,21 +141,18 @@ class FileList(ttk.Frame):
         self._inner.columnconfigure(0, weight=1)
 
         self._drop_line = tk.Frame(self._inner, height=2, bg="#1a1a1a")  # drag indicator
-        _enable_wheel(self._canvas)
-        self._canvas.bind("<Enter>", self._bind_keys, add="+")
-        self._canvas.bind("<Leave>", self._unbind_keys, add="+")
+
+        self._canvas.configure(takefocus=True)
+        for w in (self._canvas, self._inner):
+            for seq in _WHEEL_SEQS:
+                w.bind(seq, lambda e: _wheel_scroll(self._canvas, e), add="+")
+        for seq in ("<Up>", "<Down>", "<Prior>", "<Next>"):
+            self._canvas.bind(seq, self._arrow, add="+")
+        self._canvas.bind("<Button-1>", lambda _e: self._canvas.focus_set(), add="+")
         self._render()
 
-    # ---- wheel / keyboard scrolling ---------------------------
-    def _bind_keys(self, _e=None) -> None:
-        for seq in ("<Up>", "<Down>", "<Prior>", "<Next>"):
-            self._canvas.bind_all(seq, self._arrow)
-
-    def _unbind_keys(self, _e=None) -> None:
-        for seq in ("<Up>", "<Down>", "<Prior>", "<Next>"):
-            self._canvas.unbind_all(seq)
-
-    def _arrow(self, e) -> None:
+    # ---- keyboard scrolling (wheel is bound per-row in _render) ----
+    def _arrow(self, e):
         bb = self._canvas.bbox("all")
         if not bb or bb[3] - bb[1] <= self._canvas.winfo_height():
             return
@@ -199,6 +201,7 @@ class FileList(ttk.Frame):
             elif i == 0:
                 tk.Label(row, text=self.HINT, bg=stripe, fg="#9a9a9a", anchor="w").grid(
                     row=0, column=0, columnspan=4, sticky="w")
+            _bind_scroll_tree(row, self._canvas, focus_target=self._canvas)
 
     def _fill_row(self, row, i: int, stripe: str) -> None:
         path = self.files[i]
@@ -302,6 +305,8 @@ class PreviewDialog(tk.Toplevel):
         self._thumbs: list[tk.PhotoImage] = []
         self._thumb_labels: list[ttk.Label] = []
         self._q: queue.Queue = queue.Queue()
+        self._closing = False
+        self._afters: list[str] = []
 
         frm = ttk.Frame(self, padding=16)
         frm.grid(sticky="nsew")
@@ -320,7 +325,9 @@ class PreviewDialog(tk.Toplevel):
             canvas.configure(bg=ttk.Style().lookup("TFrame", "background") or None)
         except tk.TclError:
             pass
-        _enable_wheel(canvas)
+        for seq in _WHEEL_SEQS:
+            canvas.bind(seq, lambda e: _wheel_scroll(canvas, e), add="+")
+            body.bind(seq, lambda e: _wheel_scroll(canvas, e), add="+")
 
         layout = setplan.layout
         for i, e in enumerate(setplan.ok_entries):
@@ -344,6 +351,8 @@ class PreviewDialog(tk.Toplevel):
             ttk.Label(line, text=f"{e.n_effective} pages · {sheets} sheets",
                       foreground="#777").grid(row=0, column=col)
 
+        _bind_scroll_tree(body, canvas)
+
         bar = ttk.Frame(frm, padding=(0, 14, 0, 0))
         bar.grid(row=1, column=0, columnspan=2, sticky="ew")
         bar.columnconfigure(0, weight=1)
@@ -357,8 +366,8 @@ class PreviewDialog(tk.Toplevel):
         widgets.button(bar, "Start", widgets.BLUE, self._start, big=True).grid(row=0, column=1)
 
         self._center_on(parent)
-        self.after(0, self._grab)
-        self.after(60, self._pump)
+        self._afters.append(self.after(0, self._grab))
+        self._afters.append(self.after(60, self._pump))
         threading.Thread(target=self._render_thumbs,
                          args=([e.path for e in setplan.ok_entries],
                                [e.cover_removed for e in setplan.ok_entries]),
@@ -385,8 +394,13 @@ class PreviewDialog(tk.Toplevel):
                         pass
         except queue.Empty:
             pass
-        if self.winfo_exists():
-            self.after(80, self._pump)
+        if self._closing:
+            return
+        try:
+            if self.winfo_exists():
+                self._afters.append(self.after(80, self._pump))
+        except tk.TclError:
+            pass
 
     def _start(self) -> None:
         plan = self._setplan
@@ -394,6 +408,13 @@ class PreviewDialog(tk.Toplevel):
         self._on_start(plan)
 
     def close(self) -> None:
+        self._closing = True
+        for tid in self._afters:
+            try:
+                self.after_cancel(tid)
+            except tk.TclError:
+                pass
+        self._afters.clear()
         try:
             self.grab_release()
         except tk.TclError:
@@ -401,10 +422,12 @@ class PreviewDialog(tk.Toplevel):
         self.destroy()
 
     def _grab(self) -> None:
+        if self._closing:
+            return
         try:
             self.grab_set()
         except tk.TclError:
-            self.after(80, self._grab_once)
+            self._afters.append(self.after(80, self._grab_once))
 
     def _grab_once(self) -> None:
         try:
@@ -429,7 +452,14 @@ class App(tk.Tk):
         super().__init__()
         self.title("Music Printer")
         self.resizable(False, False)
+        self._closing = False
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # macOS app-menu Quit / Cmd-Q — route through the clean shutdown so the
+        # interpreter doesn't tear down mid-callback ("quit unexpectedly").
+        try:
+            self.createcommand("tk::mac::Quit", self._on_close)
+        except tk.TclError:
+            pass
 
         self.cfg = settings.load()
         self._tmpdir = Path(tempfile.mkdtemp(prefix="music-printer-"))
@@ -450,13 +480,29 @@ class App(tk.Tk):
         self._gone_polls = 0
         self._canceling = False
         self._pass = ""
+        self._afters: set[str] = set()
 
         self.printer_warn = tk.StringVar(value="")
         self.status = tk.StringVar(value="Add one or more PDFs.")
 
         self._build()
         self._load_printers()
-        self.after(80, self._pump)
+        self._after(80, self._pump)
+
+    def _after(self, ms: int, fn) -> str:
+        """Schedule a callback whose id is tracked so _on_close can cancel it."""
+        holder: list[str] = []
+
+        def run() -> None:
+            if holder:
+                self._afters.discard(holder[0])
+            if not self._closing:
+                fn()
+
+        tid = self.after(ms, run)
+        holder.append(tid)
+        self._afters.add(tid)
+        return tid
 
     # ------------------------------------------------------------ layout
     def _build(self) -> None:
@@ -646,7 +692,7 @@ class App(tk.Tk):
                 f"{_PASS_SIDE.get(self._pass, 'Pages')} · {word} · job {self._job_id}")
 
     def _poll_job(self) -> None:
-        if self.state not in _PRINTING or not self._job_id:
+        if self._closing or self.state not in _PRINTING or not self._job_id:
             return
         try:
             st = printing.job_status(self._job_id)
@@ -656,10 +702,10 @@ class App(tk.Tk):
         delay = _POLL_MS // 2 if self._canceling else _POLL_MS
         if st == "processing":
             self._detail("printing")
-            self.after(delay, self._poll_job)
+            self._after(delay, self._poll_job)
         elif st == "queued":
             self._detail("in the printer queue")
-            self.after(delay, self._poll_job)
+            self._after(delay, self._poll_job)
         elif st == "canceled" or (self._canceling and st in ("completed", "gone")):
             self._finish_pass_canceled()
         elif st == "aborted":
@@ -669,7 +715,7 @@ class App(tk.Tk):
         else:  # gone
             self._gone_polls += 1
             (self._finish_pass_ok if self._gone_polls >= 3
-             else lambda: self.after(delay, self._poll_job))()
+             else lambda: self._after(delay, self._poll_job))()
 
     def _finish_pass_ok(self) -> None:
         settings.log(f"pass ok state={self.state} job={self._job_id}")
@@ -752,13 +798,18 @@ class App(tk.Tk):
 
     # =========================================================== plumbing
     def _pump(self) -> None:
+        if self._closing:
+            return
         try:
             while True:
                 kind, *rest = self._q.get_nowait()
                 self._dispatch(kind, rest)
         except queue.Empty:
             pass
-        self.after(80, self._pump)
+        try:
+            self._after(80, self._pump)
+        except tk.TclError:
+            pass
 
     def _dispatch(self, kind: str, rest: list) -> None:
         if kind == "plan":
@@ -776,7 +827,7 @@ class App(tk.Tk):
             self._job_id = job_id
             self._gone_polls = 0
             self._detail("queued")
-            self.after(_POLL_MS, self._poll_job)
+            self._after(_POLL_MS, self._poll_job)
         elif kind == "submit_err":
             which, exc = rest
             self._finish_pass_failed(f"Could not send the {which} pass: {exc}")
@@ -806,18 +857,37 @@ class App(tk.Tk):
                 pass
 
     def _on_close(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
+        for tid in list(self._afters):
+            try:
+                self.after_cancel(tid)
+            except tk.TclError:
+                pass
+        self._afters.clear()
         if self._job_id and not self._canceling and self.state in _PRINTING:
             try:
                 printing.cancel(self._job_id)
             except Exception:
                 pass
-        if self.dialog:
-            try:
-                self.dialog.close()
-            except tk.TclError:
-                pass
+        for w in list(self.winfo_children()):
+            if isinstance(w, tk.Toplevel):
+                closer = getattr(w, "close", None)   # RunDialog/PreviewDialog stop their timers
+                try:
+                    if callable(closer):
+                        closer()
+                    else:
+                        w.grab_release()
+                        w.destroy()
+                except tk.TclError:
+                    pass
+        self.dialog = None
         shutil.rmtree(self._tmpdir, ignore_errors=True)
-        self.destroy()
+        try:
+            self.quit()       # leave the mainloop first
+        finally:
+            self.destroy()
 
 
 if __name__ == "__main__":
