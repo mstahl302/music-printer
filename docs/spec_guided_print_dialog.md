@@ -54,7 +54,7 @@ generic "Close", and the dialog never auto-closes.
 |---|---|---|---|
 | Preparing | "Preparing…" | indeterminate bar · "Building pass 1…" | Cancel print |
 | Printing pass 1 | "Printing — pass 1 of 2" | indeterminate bar · "Even pages · job `NAME-123`" | Cancel print |
-| **Flip** | **"Flip the stack"** | short-edge flip diagram · "Take the printed pages out, flip the whole stack over the **short edge**, and put them back in the tray." | **Cancel print** (quiet, left) · **Continue — print the back side** (primary, oversized, right) |
+| **Flip** | **"Flip the stack"** | a **print → flip → print** diagram (printer · arrow · a page encircled by two curved arrows · arrow · printer) · "Take the printed pages out, flip the whole stack over the **short edge**, and put them back in the tray." | **Cancel print** (quiet, left) · **Continue — print the back side** (primary, oversized, right) |
 | Printing pass 2 | "Printing — pass 2 of 2" | indeterminate bar · "Odd pages · job `NAME-456`" | Cancel print |
 | Done | "Done ✓" | "Double-sided copy printed." | **Print another** |
 | Job cancelled | "Job cancelled" | pass-1 / flip: (nothing more). pass-2: "Some sheets are printed on one side only, and there may be back-printed sheets still in the printer's feed tray — pull those out before the next job." | **Back to start** |
@@ -151,12 +151,13 @@ sketch of the two that matter most:
 
 ┌─ Printing — Along the Way.pdf ──────────────────────┐
 │                                                     │
-│   Flip the stack                        ⟳           │
-│                                    ┌────────┐        │
-│   Take the printed pages out,      │ 4 3 2  │ short  │
-│   flip the whole stack over the    │  ▭ ▭ ▭ │ edge   │
-│   SHORT edge, and put them back    └────────┘  ↕     │
-│   in the tray.                                       │
+│   Flip the stack                                    │
+│                                                     │
+│    [printer] ──▶  ( arrows around a page )  ──▶ [printer]
+│    print side 1       flip the stack       print side 2
+│                                                     │
+│   Take the printed pages out, flip the whole stack   │
+│   over the SHORT edge, and put them back in the tray.│
 │                                                     │
 │  [ Cancel print ]   [ Continue — print the back side ]│
 └─────────────────────────────────────────────────────┘
