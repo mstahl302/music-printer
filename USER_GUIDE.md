@@ -1,11 +1,12 @@
-# Music Printer
-
-![tests](https://github.com/mstahl302/music-printer/actions/workflows/ci.yml/badge.svg)
+# Music Printer — User's Guide
 
 A small macOS app that prints **double-sided sheet music on a single-sided
 printer**. It prints one side of every sheet, waits for the printer, asks
 you to flip the stack, then prints the other side onto the backs — so you
 end up with a correctly ordered, correctly collated double-sided copy.
+
+Don't have it running yet? See [README.md](README.md) for installing
+Python, cloning the repo, and building or running the app.
 
 ---
 
@@ -30,10 +31,10 @@ Music Printer automates exactly that workflow.
 
 ## How it works
 
-The owner's printer reverses PDF page order on output, and the flip is
-about the short edge — given that, this sequence produces reading order
-(the full derivation is in [docs/specification.md](docs/specification.md),
-Appendix A):
+The app assumes the printer reverses PDF page order on output, and that
+you flip the stack about the short edge — given that, this sequence
+produces reading order (the full derivation is in
+[docs/specification.md](docs/specification.md), Appendix A):
 
 1. **Pass 1 — even pages.** The app sends effective pages 2, 4, 6, … If the
    song has an odd page count, it appends **one blank page** so the two
@@ -51,51 +52,7 @@ A single-page song skips the flip and just prints.
 
 ---
 
-## Installation
-
-Music Printer needs **Python 3.14** with a modern Tk. The system Python at
-`/usr/bin/python3` (3.9, Tk 8.5) will not work.
-
-1. **Install Python** from python.org — the macOS 64-bit universal2
-   installer (currently 3.14.x): <https://www.python.org/downloads/macos/>.
-   After it installs, `python3.14` is on your `PATH`.
-
-2. **Clone and set up a virtual environment:**
-
-   ```bash
-   git clone https://github.com/mstahl302/music-printer.git
-   cd music-printer
-   python3.14 -m venv .venv
-   source .venv/bin/activate
-   pip install --upgrade pip
-   pip install -r requirements-dev.txt
-   ```
-
-   (`requirements.txt` alone is enough to *run* the app; the `-dev` file
-   adds PyInstaller and pytest.)
-
-## Running from source
-
-```bash
-source .venv/bin/activate
-python main.py
-```
-
-## Building a standalone .app
-
-```bash
-source .venv/bin/activate
-./build.sh
-open "dist/Music Printer.app"
-```
-
-This produces `dist/Music Printer.app`, which runs on the machine that
-built it. To hand it to someone else you need an Apple Developer account
-and must code-sign and notarize it — see [README.md](README.md).
-
----
-
-## User's guide
+## Step by step
 
 ### 1. Choose a printer
 
@@ -153,7 +110,7 @@ Do that, then click **"Pages are flipped — print pass 2"**.
 After pass 2 finishes you get a confirmation and a **Print another**
 button, which resets everything but keeps your printer selection.
 
-### Cancelling
+## Cancelling
 
 The **Cancel** button is active whenever a pass is printing or the app is
 waiting for the flip:
@@ -175,23 +132,10 @@ waiting for the flip:
   configurable yet.
 - **Settings and a log** are kept in
   `~/Library/Application Support/Music Printer/`.
-- **Printing** uses the built-in `lp` / `lpstat` / `cancel` command-line
-  tools; no third-party print libraries.
 
-## Development
+## See also
 
-```bash
-source .venv/bin/activate
-python -m pytest
-```
-
-The suite covers the page-planning math, cover detection against
-synthetic PDFs, and the full two-pass state machine (with printing
-mocked). CI runs it on every push.
-
-- Design: [docs/specification.md](docs/specification.md)
-- Cover-detection heuristics: [docs/cover_signals.md](docs/cover_signals.md)
-
-## Licence
-
-MIT — see [LICENSE](LICENSE).
+- [README.md](README.md) — install, build, develop
+- [docs/specification.md](docs/specification.md) — full design
+- [docs/cover_signals.md](docs/cover_signals.md) — cover-detection heuristics
+- [LICENSE](LICENSE) — MIT

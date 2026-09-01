@@ -1,6 +1,9 @@
 # Cover-Sheet Detection Signals
 
-**Status:** DRAFT — findings from an initial sample, to be re-confirmed on the full corpus
+**Status:** IMPLEMENTED — shipped in `musicprinter/covers/musicnotes.py` as
+described below, based on a 12-file sample. The full-corpus validation in
+§6 has not been run; treat the confidence numbers as good-but-unverified
+at scale until it is.
 **Date:** 2026-09-01
 **Related:** [specification.md](specification.md) §7.1
 
@@ -180,5 +183,7 @@ to `REGISTRY`. No changes to page planning or printing.
 4. Freeze a small labelled subset as `tests/fixtures/` with expected
    `CoverMatch` output.
 
-Numbers in §3 are from a 12-file sample and must be re-confirmed against
-the full corpus before implementation is considered complete.
+Numbers in §3 are from a 12-file sample. This validation plan has **not**
+been run yet — it's a good follow-up, not a blocker: `smart` mode ships
+today on the 12-file numbers, and `none` / `always` remain available as an
+escape hatch if a real file trips it up.

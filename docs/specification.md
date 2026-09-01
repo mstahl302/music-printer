@@ -1,12 +1,13 @@
 # Music Printer — Specification
 
-**Status:** DRAFT — revision 0.2, incorporates review feedback of 2026-09-01. Awaiting final approval.
+**Status:** APPROVED — implemented (revision 0.2, approved and built 2026-09-01)
 **Date:** 2026-09-01
 **Owner:** markstahl
 
-> Implementation does not begin until this document is marked **APPROVED**.
-> All review questions from revision 0.1 are resolved; see
-> [§11](#11-resolved-decisions).
+> This spec was approved and implemented as described below. All review
+> questions from revision 0.1 are resolved; see [§11](#11-resolved-decisions).
+> Treat this document as the design record — if the implementation and this
+> spec ever disagree, update whichever one is wrong.
 
 ---
 
