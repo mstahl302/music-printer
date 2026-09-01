@@ -482,7 +482,7 @@ class App(tk.Tk):
         self.cover_menu.config(state=inputs)
 
         start_ok = state == READY and self.plan is not None and bool(self.printer.get())
-        self.start_btn.configure(state="normal" if start_ok else "disabled")
+        self.start_btn.set_enabled(start_ok)
         (self.start_btn.grid if state == READY else self.start_btn.grid_remove)()
         (self.another_btn.grid if state in (DONE, DONE_ERROR)
          else self.another_btn.grid_remove)()

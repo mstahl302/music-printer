@@ -1,9 +1,13 @@
 """Flat, colour-filled buttons that actually render their colour on macOS.
 
 `tk.Button` on the macOS aqua theme ignores `background` while enabled
-(it draws the native button face), so a coloured button built that way
-shows grey when clickable. This `Button` is a `tk.Label` with click /
-hover / focus bindings — Labels honour `background` on every platform.
+(it draws the native grey button face), so a coloured button built that
+way shows grey when clickable. `widgets.Button` is a `tk.Label` with
+mouse bindings — Labels honour their `background` on every platform.
+
+It is *not* a drop-in `tk.Button`: use ``set_enabled(bool)`` instead of
+``configure(state=…)``. ``configure(text=…)``, ``cget(…)``, ``grid(…)``
+etc. are the stock `tk.Label` methods, untouched.
 """
 
 from __future__ import annotations
@@ -20,8 +24,9 @@ def _rgb(h: str) -> tuple[int, int, int]:
 
 
 def _hex(r: float, g: float, b: float) -> str:
-    clamp = lambda v: max(0, min(255, int(round(v))))
-    return f"#{clamp(r):02x}{clamp(g):02x}{clamp(b):02x}"
+    def c(v: float) -> int:
+        return max(0, min(255, int(round(v))))
+    return f"#{c(r):02x}{c(g):02x}{c(b):02x}"
 
 
 def darken(colour: str, factor: float = 0.82) -> str:
@@ -40,80 +45,47 @@ class Button(tk.Label):
         super().__init__(
             parent, text=text, bg=colour, fg="white", font="TkDefaultFont",
             padx=20 if big else 16, pady=9 if big else 7,
-            cursor="pointinghand", takefocus=True,
-            highlightthickness=2, highlightbackground=colour,
-            highlightcolor=darken(colour, 0.55),
+            bd=0, relief="flat", highlightthickness=0, cursor="pointinghand",
         )
         self._command = command
         self._colour = colour
         self._enabled = True
-        for seq, fn in (
-            ("<Button-1>", self._press), ("<ButtonRelease-1>", self._release),
-            ("<Enter>", self._hover), ("<Leave>", self._unhover),
-            ("<Return>", self._key), ("<space>", self._key),
-            ("<FocusIn>", self._focus), ("<FocusOut>", self._unfocus),
-        ):
-            self.bind(seq, fn)
+        self.bind("<Enter>", self._hover)
+        self.bind("<Leave>", self._unhover)
+        self.bind("<Button-1>", self._press)
+        self.bind("<ButtonRelease-1>", self._release)
 
-    # ---- painting ------------------------------------------------
-    def _paint(self, colour: str) -> None:
-        tk.Label.configure(self, bg=colour, highlightbackground=colour)
-
-    def recolour(self, colour: str) -> None:
-        self._colour = colour
+    def _hover(self, _e):
         if self._enabled:
-            self._paint(colour)
-            tk.Label.configure(self, fg="white")
+            tk.Label.configure(self, bg=darken(self._colour))
 
-    # ---- events -------------------------------------------------
+    def _unhover(self, _e):
+        if self._enabled:
+            tk.Label.configure(self, bg=self._colour)
+
     def _press(self, _e):
         if self._enabled:
-            self._paint(darken(self._colour, 0.68))
+            tk.Label.configure(self, bg=darken(self._colour, 0.68))
 
     def _release(self, e):
         if not self._enabled:
             return
         inside = 0 <= e.x < self.winfo_width() and 0 <= e.y < self.winfo_height()
-        self._paint(darken(self._colour) if inside else self._colour)
+        tk.Label.configure(self, bg=darken(self._colour) if inside else self._colour)
         if inside and self._command:
             self._command()
 
-    def _hover(self, _e):
+    # ---- state / colour -----------------------------------------
+    def set_enabled(self, enabled: bool) -> None:
+        self._enabled = bool(enabled)
         if self._enabled:
-            self._paint(darken(self._colour))
+            tk.Label.configure(self, bg=self._colour, fg="white", cursor="pointinghand")
+        else:
+            tk.Label.configure(self, bg=_fade(self._colour), fg="#f4f6fa", cursor="")
 
-    def _unhover(self, _e):
-        if self._enabled:
-            self._paint(self._colour)
-
-    def _key(self, _e):
-        if self._enabled and self._command:
-            self._command()
-        return "break"
-
-    def _focus(self, _e):
-        tk.Label.configure(self, highlightbackground=darken(self._colour, 0.55))
-
-    def _unfocus(self, _e):
-        tk.Label.configure(self, highlightbackground=self._colour)
-
-    # ---- tk.Button-compatible surface ---------------------------
-    def configure(self, **kw):
-        if "state" in kw:
-            self._enabled = kw.pop("state") in ("normal", tk.NORMAL)
-            if self._enabled:
-                self._paint(self._colour)
-                tk.Label.configure(self, fg="white", cursor="pointinghand")
-            else:
-                faded = _fade(self._colour)
-                tk.Label.configure(self, bg=faded, highlightbackground=faded,
-                                   fg="#f4f6fa", cursor="")
-        if "text" in kw:
-            tk.Label.configure(self, text=kw.pop("text"))
-        if kw:
-            tk.Label.configure(self, **kw)
-
-    config = configure
+    def recolour(self, colour: str) -> None:
+        self._colour = colour
+        self.set_enabled(self._enabled)
 
 
 def button(parent, text: str, colour: str, command, *, big: bool = False) -> Button:

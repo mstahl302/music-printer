@@ -98,11 +98,13 @@ Dock-icon bounce is out of scope for this spec — tracked as an idea in
   Continue (at the flip) and Cancel print. Close appears only once the
   run has reached a terminal state.
 - Buttons come from `musicprinter/widgets.py`. `tk.Button` on macOS aqua
-  ignores `background` while enabled (it shows grey), so `widgets.Button`
-  is a `tk.Label` with click / hover / focus bindings — Labels honour
-  their colour everywhere. Green `#2f8f4e`, red `#c0392b`, blue `#2b5fb0`;
-  disabled blends 55 % toward white. **The main window uses the same
-  set** — *Choose PDF…* and *Start* are blue, *Start* fades while disabled.
+  ignores `background` while enabled (shows grey), so `widgets.Button` is
+  a `tk.Label` with mouse bindings — `highlightthickness=0` (the grey
+  focus border was the culprit) and no `configure` override (call
+  `set_enabled(bool)`, not `configure(state=…)`). Green `#2f8f4e`, red
+  `#c0392b`, blue `#2b5fb0`; disabled blends 55 % toward white. **The
+  main window uses the same set** — *Choose PDF…* and *Start* are blue,
+  *Start* fades while disabled.
 - The indeterminate progress bar steps every ~55 ms (a bit slower than
   the Tk default) so it reads as working, not frantic.
 - Destructive confirmations are unchanged (§4).

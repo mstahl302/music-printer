@@ -125,7 +125,7 @@ class RunDialog(tk.Toplevel):
 
         active = phase in _ACTIVE
         (self._cancel_btn.grid if active else self._cancel_btn.grid_remove)()
-        self._cancel_btn.configure(state="normal")
+        self._cancel_btn.set_enabled(True)
 
         if phase == FLIP:
             widgets.recolour(self._primary_btn, _GREEN)
@@ -146,10 +146,10 @@ class RunDialog(tk.Toplevel):
         self._detail.configure(text=text)
 
     def disable_cancel(self) -> None:
-        self._cancel_btn.configure(state="disabled")
+        self._cancel_btn.set_enabled(False)
 
     def enable_cancel(self) -> None:
-        self._cancel_btn.configure(state="normal")
+        self._cancel_btn.set_enabled(True)
 
     def bring_forward(self) -> None:
         try:
