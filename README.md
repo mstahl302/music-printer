@@ -1,5 +1,7 @@
 # Music Printer
 
+![tests](https://github.com/mstahl302/music-printer/actions/workflows/ci.yml/badge.svg)
+
 A tiny macOS GUI that prints **double-sided sheet music on a single-sided
 printer**. Pick a printer and a PDF, hit Start: the app prints the even
 pages, waits for the printer, asks you to flip the stack (short edge), then
