@@ -201,6 +201,8 @@ class FileList(ttk.Frame):
 
     def set_files(self, files) -> None:
         self.files = list(files)
+        keep = {str(p) for p in self.files}
+        self._entry_by_path = {k: v for k, v in self._entry_by_path.items() if k in keep}
         self._render()
 
     def add(self, paths) -> None:
@@ -802,11 +804,18 @@ class App(tk.Tk):
             self._q.put(("cancel_err", exc))
 
     def _close_dialog(self) -> None:
+        completed = self.state == DONE           # not a cancel / failure
         if self.dialog:
             self.dialog.close()
             self.dialog = None
+        if completed:
+            # Clear the set so the next run starts fresh; keep printer / strip mode.
+            self.filelist.set_files([])
+            self.setplan = None
         self._set_state(READY)
         self._recompute()
+        if completed:
+            self.status.set("Printed. Add PDFs to print another.")
 
     def _play_flip_cue(self) -> None:
         if os.environ.get("MUSIC_PRINTER_NO_SOUND"):

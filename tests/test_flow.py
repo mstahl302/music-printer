@@ -85,6 +85,13 @@ def test_single_file_two_pass(tmp_path, monkeypatch, no_dialogs):
     _pump(app, lambda: app.state == main.DONE)
     assert _passes(fake) == ["even", "odd"]
     assert app.dialog._primary_btn.cget("text") == "Close"
+
+    printer_before, cover_before = app.printer.get(), app.cover_label.get()
+    app._close_dialog()                         # click "Close" on the done dialog
+    assert app.filelist.files == []             # set cleared, ready for the next run
+    assert app.setplan is None
+    assert app.state == main.READY
+    assert (app.printer.get(), app.cover_label.get()) == (printer_before, cover_before)
     app._on_close()
 
 
@@ -176,6 +183,9 @@ def test_cancel_during_pass2_warns_about_feed_tray(tmp_path, monkeypatch, no_dia
     assert app.dialog.phase == "cancelled"
     assert "feed tray" in app.dialog._detail.cget("text")
     assert fake.canceled == ["FAKE-2"]
+
+    app._close_dialog()
+    assert app.filelist.files == [pdf]          # a cancelled run keeps the set
     app._on_close()
 
 

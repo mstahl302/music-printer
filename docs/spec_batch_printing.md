@@ -164,6 +164,11 @@ pass 1 of 2 · even pages   →   flip the stack   →   pass 2 of 2 · odd page
 For a list of one the run-dialog title is the filename, as today. Cancel
 semantics are unchanged (feature #1 §4).
 
+On a **clean finish**, clicking **Close** returns to the main window with
+the set **cleared** (printer and Strip Cover Sheet kept) so the next
+set-list starts fresh. A **cancelled or failed** run keeps the set so it
+can be adjusted and retried.
+
 ## 6. Visual mockups
 
 See the companion artifact. Text sketch of the main-window list:
