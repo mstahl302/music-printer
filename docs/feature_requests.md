@@ -23,8 +23,8 @@ its own design pass (and, where it touches printing behavior, an update to
 
 ## Top priority
 
-**#1 and #2 are built** — kept here for provenance. **#18 and #19 are the
-current top of the queue**, not yet spec'd.
+**#1 and #2 are built** — kept here for provenance. **#18, #19, and #20
+are the current top of the queue** — #20 is spec'd, #18 and #19 are not.
 
 ### 1. Guided-print dialog with a louder flip cue
 
@@ -113,6 +113,31 @@ paper-count math, and is close to a prerequisite for unattended runs.
 > builder) and [`printing.submit`](../musicprinter/printing.py); when
 > actioned, [specification.md §7.4](specification.md#74-printer-assumptions)
 > needs a matching revision.
+
+### 20. Register as a PDF handler ("Open With" association)
+
+> 📄 **Spec:** [spec_pdf_file_association.md](spec_pdf_file_association.md). Not yet built.
+
+Make **Music Printer** appear in a PDF's right-click **Open With**
+submenu in Finder and accept the file when chosen — one or more PDFs
+selected in Finder and opened with the app land in the main window's
+list, exactly as if added through **Add PDFs…**, whether the app was
+closed or already running. Three parts: declare `CFBundleDocumentTypes`
+(PDF, `Viewer`, `LSHandlerRank: Alternative`) plus a stable
+`CFBundleIdentifier` in the bundle; catch the `kAEOpenDocuments` Apple
+Event via Tk's `::tk::mac::OpenDocument` (same mechanism as the existing
+`tk::mac::Quit`) and route paths into `filelist.add()`; register the
+built app with Launch Services (`lsregister`, or move to `/Applications`
+and launch once). **Not** the default handler — Preview keeps
+double-click; the app only offers itself in the *Open With* submenu.
+
+**Value:** the file is almost always already open in Finder (that's
+where a Musicnotes download lands). "Find the app, then find the file"
+collapses to one right-click from where the file already is, and
+multi-select makes a whole set-list populate in performance order with
+no trip through the open panel. For a non-technical user it turns the
+tool from something you go *to* into something that's *there* on the
+file.
 
 ---
 
