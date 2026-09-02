@@ -1,7 +1,7 @@
 # Music Printer — Feature Requests
 
 **Status:** BACKLOG — ideas and requests, not yet scheduled or spec'd.
-**Date:** 2026-09-01
+**Date:** 2026-09-01 · updated 2026-09-02
 **Owner:** markstahl
 
 Grouped by how badly they're wanted, then roughly by priority within each
@@ -10,7 +10,8 @@ its own design pass (and, where it touches printing behavior, an update to
 [specification.md](specification.md)).
 
 > **Note on scope:** several items below (duplex mode, back-side rotation,
-> full per-printer page-order handling) revisit decisions
+> full per-printer page-order handling, colour output, media-size
+> normalisation) revisit decisions
 > [specification.md §4.2](specification.md#42-out-of-scope--non-goals-v1)
 > and [§7.4](specification.md#74-printer-assumptions) that were originally
 > fixed. Page order has already been reopened (it's a settings-file value
@@ -22,7 +23,8 @@ its own design pass (and, where it touches printing behavior, an update to
 
 ## Top priority
 
-Both **built** — kept here for provenance.
+**#1 and #2 are built** — kept here for provenance. **#18 and #19 are the
+current top of the queue**, not yet spec'd.
 
 ### 1. Guided-print dialog with a louder flip cue
 
@@ -73,11 +75,50 @@ music as one packet, in performance order, in one sitting instead of N
 manual runs through the app, with no surprise about how much paper it'll
 take.
 
+### 18. Print in colour
+
+Send both passes as **colour** jobs (`lp -o print-color-mode=color` /
+`ColorModel=RGB`), not whatever the driver defaults to. Ideally a small
+**Colour / Black & white** control on the main window next to Printer,
+defaulting to colour, with the choice saved to the settings file like the
+printer and strip mode.
+
+**Value:** engraved sheet music increasingly ships with colour — coloured
+chord diagrams, highlighted repeats and endings, capo/section labels,
+publisher accents. A greyscale job flattens those into near-invisible
+mid-greys. The two-pass workflow also makes a wrong default expensive:
+you don't notice until the whole flipped stack is on the tray. Colour by
+default, switch to B&W to save ink.
+
+### 19. Normalise every page to Letter so the printer never pauses
+
+Rescale / fit every page of both mega-PDFs to **US Letter** (612×792 pt) —
+rewrite the MediaBox, scale the content to fit with even margins — and
+submit with `-o media=Letter -o fit-to-page` so CUPS and the printer
+never see a size they have to negotiate.
+
+Today a PDF that's A4, or Letter-with-a-hair-off, or any non-tray size
+makes the printer **stop and wait** — "load A4 in tray 1", or a driver
+confirmation dialog — mid-run. Between pass 1 and pass 2 that's a stall
+you can easily miss, and it defeats the whole point of feature #1 (don't
+make the human babysit the run). Musicnotes and other stores mix Letter
+and A4 freely, and a set-list (#2) can now contain both in one job.
+
+**Value:** the run goes start-to-finish without the printer pausing for
+input; page size is consistent across a mixed set-list; margins and
+scaling are predictable. Pairs naturally with #8 (export) and the
+paper-count math, and is close to a prerequisite for unattended runs.
+
+> Touches [`pdfio.build_pages`](../musicprinter/pdfio.py) (the mega-PDF
+> builder) and [`printing.submit`](../musicprinter/printing.py); when
+> actioned, [specification.md §7.4](specification.md#74-printer-assumptions)
+> needs a matching revision.
+
 ---
 
 ## Lower priority
 
-Wanted, but after the two above.
+Wanted, but after the items above.
 
 ### 3. Extended printer-setup dialog
 
