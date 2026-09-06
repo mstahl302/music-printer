@@ -802,13 +802,21 @@ class App(tk.Tk):
         ttk.Label(frm, text="Printer:").grid(row=0, column=0, sticky="w", **pad)
         self.printer_menu = ttk.OptionMenu(frm, self.printer_display, "")
         self.printer_menu.grid(row=0, column=1, sticky="ew", **pad)
-        # A tk.Label, not ttk.Button: aqua won't let a ttk.Button size down to
-        # the glyph (it stays a wide bezelled rectangle). This hugs the icon.
-        self.options_btn = tk.Label(
-            frm, text="⚙", font=("TkDefaultFont", 16), cursor="pointinghand",
-            padx=5, pady=2, relief="solid", borderwidth=1, takefocus=0)
+        # A small flat-grey icon button. A Canvas (not ttk.Button, which aqua
+        # won't shrink to the glyph; not a Label, whose baseline leaves the
+        # glyph off-centre) lets us size it exactly and centre the gear by
+        # bounding box.
+        self.options_btn = tk.Canvas(frm, width=30, height=24, bg="#e6e6e6",
+                                     highlightthickness=0, bd=0,
+                                     cursor="pointinghand", takefocus=0)
+        self.options_btn.create_text(15, 12, text="⚙", font=("TkDefaultFont", 15),
+                                     fill="#333333", disabledfill="#9a9a9a")
         self.options_btn.grid(row=0, column=2, sticky="e", padx=(2, 10))
         self.options_btn.bind("<Button-1>", lambda _e: self._open_options())
+        self.options_btn.bind(
+            "<Enter>", lambda _e: self.options_btn.cget("state") == "normal"
+            and self.options_btn.config(bg="#dcdcdc"))
+        self.options_btn.bind("<Leave>", lambda _e: self.options_btn.config(bg="#e6e6e6"))
         ttk.Label(frm, textvariable=self.options_summary, foreground="#888",
                   font=("TkDefaultFont", 10)).grid(
             row=1, column=1, columnspan=2, sticky="w", padx=10)
