@@ -802,8 +802,13 @@ class App(tk.Tk):
         ttk.Label(frm, text="Printer:").grid(row=0, column=0, sticky="w", **pad)
         self.printer_menu = ttk.OptionMenu(frm, self.printer_display, "")
         self.printer_menu.grid(row=0, column=1, sticky="ew", **pad)
-        self.options_btn = ttk.Button(frm, text="⚙", width=3, command=self._open_options)
-        self.options_btn.grid(row=0, column=2, sticky="e", padx=(0, 10))
+        # A tk.Label, not ttk.Button: aqua won't let a ttk.Button size down to
+        # the glyph (it stays a wide bezelled rectangle). This hugs the icon.
+        self.options_btn = tk.Label(
+            frm, text="⚙", font=("TkDefaultFont", 16), cursor="pointinghand",
+            padx=5, pady=2, relief="solid", borderwidth=1, takefocus=0)
+        self.options_btn.grid(row=0, column=2, sticky="e", padx=(2, 10))
+        self.options_btn.bind("<Button-1>", lambda _e: self._open_options())
         ttk.Label(frm, textvariable=self.options_summary, foreground="#888",
                   font=("TkDefaultFont", 10)).grid(
             row=1, column=1, columnspan=2, sticky="w", padx=10)
