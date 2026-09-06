@@ -126,11 +126,12 @@ Contents, top to bottom:
   `label`).
 - **One block per option**, built by walking the registry and switching
   on `spec.kind` ([§4.3](#43-the-option-registry)): a `check` renders one
-  `ttk.Checkbutton`; a `radio` renders `spec.label` as a small heading
-  then a `ttk.Radiobutton` per `spec.choices` sharing one draft
-  `StringVar`. Each block gets a muted `spec.help` sub-label. No
-  `command` callbacks — a control just updates its draft var.
-  `self._vars[spec.key]` holds the draft var for each option.
+  `ttk.Checkbutton`; a `radio` renders a row of `ttk.Radiobutton`s over
+  `spec.choices` sharing one draft `StringVar` — **no group heading**, the
+  buttons name themselves. Each block gets a muted `spec.help` sub-label
+  (same grey as the main-window summary line, so it reads as help, not
+  instruction). No `command` callbacks — a control just updates its draft
+  var. `self._vars[spec.key]` holds the draft var for each option.
 - **Apply** button (`widgets.button(..., BLUE)`), plus
   `protocol("WM_DELETE_WINDOW", self._discard)`. Apply is the **only**
   commit; there is no separate Cancel (the close box is the cancel).
@@ -223,7 +224,7 @@ presentation:
 | `kind` | Control | Value |
 |---|---|---|
 | `check` | one `ttk.Checkbutton` (`label` is its text) | `bool` |
-| `radio` | `label` as a small row heading, then one `ttk.Radiobutton` per `choices` entry over a shared draft var | one of `choices` values (`str`) |
+| `radio` | a row of `ttk.Radiobutton`s over `choices` sharing one draft var — no heading (`label` unused) | one of `choices` values (`str`) |
 | `choice` | `label` + a `ttk.OptionMenu` over `choices` | one of `choices` values (`str`) |
 
 Color is a **radio** (`Color` / `Black & white`) — a two-way pick with
@@ -339,9 +340,9 @@ quietly flattening a color score.
 
 ### 5.1 Color vs. black & white (#18)
 
-- **Control:** a **radio group** headed "Color" with two buttons —
-  **Color** and **Black & white** — one selected at all times
-  (`kind="radio"`, `choices = (("color","Color"), ("mono","Black & white"))`).
+- **Control:** two radio buttons — **Color** and **Black & white** — one
+  selected at all times, no group heading (`kind="radio"`,
+  `choices = (("color","Color"), ("mono","Black & white"))`).
 - **Default:** `"color"`. Color by default, switch to B&W to save ink —
   exactly [#18](feature_requests.md).
 - **Summary:** always shown — `"Color"` or `"B&W"`.
@@ -406,13 +407,12 @@ Same window, this printer set to B&W and a paused queue:
 │   Options for Xerox Phaser (Windermere)               │
 │   ────────────────────────────────────────────────    │
 │                                                      │
-│   Color                                               │
 │      ( • ) Color        ( ) Black & white             │
-│      Black & white saves ink; color keeps chord       │
+│      Black & white saves ink; color keeps chord       │   ← help, muted grey
 │      diagrams and highlighted endings legible.        │
 │                                                      │
 │   ☑  Resize pages to fit the sheet                    │
-│      Scales each page to the printer's paper so it    │
+│      Scales each page to the printer's paper so it    │   ← help, muted grey
 │      never pauses to ask.                             │
 │                                                      │
 │   ────────────────────────────────────────────────    │
@@ -420,12 +420,13 @@ Same window, this printer set to B&W and a paused queue:
 └──────────────────────────────────────────────────────┘
 ```
 
-Blocks appear in `REGISTRY` order (`order` field) — Color (radio) then
-Resize (checkbox). Each `kind` renders its own control
-([§4.3](#43-the-option-registry)). The dialog is sized to its content;
-later options just make it taller. **Apply** commits the current
-selections and closes; closing the window without Apply leaves the
-printer's options untouched.
+Blocks appear in `REGISTRY` order (`order` field) — Color (radio, no
+heading) then Resize (checkbox). Each `kind` renders its own control
+([§4.3](#43-the-option-registry)); the help line under each is the same
+muted grey as the main-window summary so it reads as help, not
+instruction. The dialog is sized to its content; later options just make
+it taller. **Apply** commits the current selections and closes; closing
+the window without Apply leaves the printer's options untouched.
 
 ## 7. Behavior details / edge cases
 
@@ -542,7 +543,7 @@ printer, and that the line under the picker is the read-out.
 | `musicprinter/printer_options.py` (new) | `Option` dataclass (incl. `kind` / `choices`); `ColorMode` (radio), `FitToPage` (check); `REGISTRY`; `defaults` / `for_printer` / `persist` / `summary_line` / `submit_kwargs`. ~90 lines, no I/O beyond calling `settings.save`. |
 | `musicprinter/settings.py` | one new default: `"printer_options": {}`. Nothing else. |
 | `musicprinter/printing.py` | `submit(...)` gains `color_mode="color"`; emits `-o print-color-mode=color|monochrome`. `fit_to_page` branch already present. |
-| `main.py` `App._build` | shrink printer `OptionMenu` to col 1; add `ttk.Button("⚙")` col 2 → `_open_options`; insert the summary `Label` row under the picker; renumber rows below (+1). |
+| `main.py` `App._build` | shrink printer `OptionMenu` to col 1; add a small flat-grey `tk.Canvas` gear (30×20, glyph centred by bbox, aligned to the dropdown's edges) in col 2 → `_open_options`; insert the muted summary `Label` row under the picker; renumber rows below (+1). |
 | `main.py` `App.__init__` | `self.options_summary = tk.StringVar()`; `self._printer_opts = printer_options.for_printer(self.cfg, self.printer.get())`; `_refresh_options_summary()`. |
 | `main.py` `App._choose_printer` / `_load_printers` | reload `_printer_opts` for the newly-selected printer; `_refresh_options_summary()`. |
 | `main.py` `App._set_state` | disable the gear button unless `state == READY`. |
@@ -610,8 +611,10 @@ at §8 row 4).
 7. **Migrate `reverse_page_order` — keep it simple, do it with #5.** The
    global stays for now; §8 row 3 folds it into the per-printer store.
    Merge options into one dialog block where it reads better.
-8. **Gear glyph.** `⚙` (U+2699); fall back to a text `Options…` button if
-   it renders badly on aqua Tk 9.
+8. **Gear button.** `⚙` (U+2699) drawn on a small flat-grey `tk.Canvas`
+   (renders fine on aqua Tk 9; a Canvas because neither `ttk.Button` nor a
+   `tk.Label` gives a tight, edge-aligned box with a centred glyph). No
+   text fallback needed.
 9. **Summary line is not clickable.** Advisory text only. The gear is the
    one and only way into the dialog.
 

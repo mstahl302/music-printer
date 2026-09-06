@@ -639,9 +639,7 @@ class OptionsDialog(tk.Toplevel):
             cur = values.get(spec.key, spec.default)
             if spec.kind == "radio":
                 var = tk.StringVar(value=str(cur))
-                ttk.Label(body, text=spec.label,
-                          font=("TkDefaultFont", 11, "bold")).grid(
-                    row=r, column=0, sticky="w", pady=(0, 2)); r += 1
+                # No group heading — the buttons name themselves.
                 pick = ttk.Frame(body)
                 pick.grid(row=r, column=0, sticky="w"); r += 1
                 for i, (val, lbl) in enumerate(spec.choices):
@@ -660,7 +658,7 @@ class OptionsDialog(tk.Toplevel):
                 var = tk.BooleanVar(value=bool(cur))
                 ttk.Checkbutton(body, text=spec.label, variable=var).grid(
                     row=r, column=0, sticky="w"); r += 1
-            ttk.Label(body, text=spec.help, foreground="#777",
+            ttk.Label(body, text=spec.help, foreground="#888",
                       wraplength=360, justify="left").grid(
                 row=r, column=0, sticky="w", pady=(1, 14)); r += 1
             self._vars[spec.key] = var
@@ -806,12 +804,12 @@ class App(tk.Tk):
         # won't shrink to the glyph; not a Label, whose baseline leaves the
         # glyph off-centre) lets us size it exactly and centre the gear by
         # bounding box.
-        self.options_btn = tk.Canvas(frm, width=30, height=24, bg="#e6e6e6",
+        self.options_btn = tk.Canvas(frm, width=30, height=20, bg="#e6e6e6",
                                      highlightthickness=0, bd=0,
                                      cursor="pointinghand", takefocus=0)
-        self.options_btn.create_text(15, 12, text="⚙", font=("TkDefaultFont", 15),
+        self.options_btn.create_text(15, 10, text="⚙", font=("TkDefaultFont", 15),
                                      fill="#333333", disabledfill="#9a9a9a")
-        self.options_btn.grid(row=0, column=2, sticky="e", padx=(2, 10))
+        self.options_btn.grid(row=0, column=2, sticky="e", padx=(2, 10), pady=5)
         self.options_btn.bind("<Button-1>", lambda _e: self._open_options())
         self.options_btn.bind(
             "<Enter>", lambda _e: self.options_btn.cget("state") == "normal"
