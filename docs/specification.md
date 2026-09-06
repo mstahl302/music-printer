@@ -55,6 +55,8 @@ automates.
   pages, the EVEN set is one sheet short of the ODD set; the app inserts a
   blank sheet to compensate ([§7.2](#72-page-set-computation)).
 - **No auto-fit / no scaling.** Pages print at 100 %.
+  > ⚠ **Changed** — [Appendix C.5](#c5-printer-options): "resize to fit" is
+  > a per-printer option now, **on by default** (`lp -o fit-to-page`).
 
 ---
 
@@ -80,6 +82,9 @@ automates.
 ### 4.1 In scope (v1)
 
 - Select a printer (from the system/CUPS list).
+  > ⚠ **Extended** — [Appendix C.5](#c5-printer-options): a gear beside the
+  > picker opens per-printer output options; a one-line summary of them
+  > sits under the picker.
 - Select one source PDF.
   > ⚠ **Changed** — [Appendix C.2](#c2-set-list-printing): an ordered
   > *list* of one or more PDFs.
@@ -108,9 +113,15 @@ automates.
   `process_pdf` rotate / strip-metadata feature and its `core.py` are
   **removed**.
 - Any scaling or fit-to-page.
+  > ⚠ **Reopened** — [Appendix C.5](#c5-printer-options): `fit-to-page` is
+  > a per-printer option, default on.
 - Configurable page-reversal, flip edge, or back-side rotation — the
   owner's setup (reversing printer, short-edge flip, no rotation) is
   assumed and fixed.
+  > ⚠ **Partly reopened** — color vs. B&W ships as a per-printer option
+  > ([Appendix C.5](#c5-printer-options)); per-printer page order, true
+  > duplex and back-side rotation are roadmapped on the same mechanism
+  > ([spec_printer_options.md §8](spec_printer_options.md#8-roadmap--every-option-in-the-backlog)).
 
 ---
 
@@ -416,6 +427,11 @@ Mostly hard-coded for v1, matching the owner's setup:
 | Back-side rotation | none | Pass-2 pages are sent unrotated. |
 | Scaling | none | `lp` gets no `fit-to-page`. |
 
+> ⚠ **Changed** — [Appendix C.5](#c5-printer-options): the **Scaling** row
+> is now a per-printer option (`fit-to-page`, default on), and color
+> vs. B&W is a per-printer option too — `print-color-mode=color` /
+> `=monochrome` is now sent explicitly on every job.
+
 Settings-file values (no UI): `confidence_threshold` (default **0.70**)
 for smart cover detection, and `reverse_page_order` (default **true**).
 
@@ -499,7 +515,7 @@ From the revision-0.1 review (2026-09-01):
 |---|---|---|
 | Q1 | Copies > 1 in v1? | Out of scope. |
 | Q2 | Remove the scaffold's rotate / strip-metadata feature and `core.py`? | Yes, remove. |
-| Q3 | `fit_to_page` default? | No auto-fit; fixed off, print at 100 %. |
+| Q3 | `fit_to_page` default? | No auto-fit; fixed off, print at 100 %. — ⚠ **Reversed 2026-09-06** ([Appendix C.5](#c5-printer-options)): `fit-to-page` is a per-printer option, default **on**. |
 | Q4 | First-page thumbnail in the plan preview? | Required. |
 | Q5 | Password-protected PDFs? | Out of scope — refuse with a message. |
 | Q6 | Effective pages ≤ 1 → single direct pass, no flip? | Yes. |
@@ -645,3 +661,30 @@ Spec: [spec_resizable_preview.md](spec_resizable_preview.md) · built 2026-09-06
   is visible without scrolling. The main window and `RunDialog` (C.1)
   remain fixed-size; this was considered and explicitly dropped for the
   main window.
+
+### C.5 Printer options
+
+Spec: [spec_printer_options.md](spec_printer_options.md) · built 2026-09-06.
+
+- A **gear button** sits to the right of the printer picker; it opens a
+  modal **per-printer options dialog** (`main.OptionsDialog`). The dialog
+  edits a local draft — **Apply** is the only commit, closing any other
+  way discards it. Directly under the picker, a small muted **summary
+  line** (`Options: Color, fit-to-page`) reports the current selection;
+  it is advisory, not a control.
+- Options are an extensible registry, `musicprinter/printer_options.py` —
+  each `Option` descriptor carries its key, default, dialog presentation
+  (`kind`: check / radio / choice), the token it adds to the summary
+  line, and how it mutates the `printing.submit` call. Two ship now:
+  **Color vs. Black & white** (radio, default `color`) and **Resize
+  pages to fit the sheet** (checkbox, default **on**).
+- Selected values are **saved per printer**, keyed by CUPS queue name,
+  under `settings.json` → `printer_options`. Switching printers reloads
+  them. `printing.submit` gained a `color_mode` parameter and now always
+  emits `-o print-color-mode=color` / `=monochrome`; `fit_to_page` (long
+  present, never passed) is wired through.
+- Supersedes §2 "no auto-fit", the §4.2 "any scaling / fit-to-page" and
+  page-behavior non-goals (color only), the §7.4 **Scaling** row, and
+  §11/Q3. Per-printer page order, true duplex, back-side rotation and a
+  welcome flow are roadmapped on this same mechanism
+  ([spec_printer_options.md §8](spec_printer_options.md#8-roadmap--every-option-in-the-backlog)).

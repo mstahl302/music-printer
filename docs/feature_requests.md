@@ -12,60 +12,30 @@ is not rewritten — it gets a short **appendix** noting what changed and
 pointing at the new spec.
 
 > **Note on scope:** several items below (duplex mode, back-side rotation,
-> full per-printer page-order handling, color output) revisit decisions
+> full per-printer page-order handling) revisit decisions
 > [specification.md §4.2](specification.md#42-out-of-scope--non-goals-v1)
 > and [§7.4](specification.md#74-printer-assumptions) that were originally
 > fixed. Page order has already been reopened (it's a settings-file value
-> now — see #5). That's fine — this doc is where "maybe later" lives — but
-> when one of these is actioned, the relevant spec gets a matching
-> appendix, not a quiet contradiction.
+> now — see #5); color and fit-to-page were reopened as printer options
+> ([Appendix C.5](specification.md#c5-printer-options)). That's fine —
+> this doc is where "maybe later" lives — but when one of these is
+> actioned, the relevant spec gets a matching appendix, not a quiet
+> contradiction.
 
 ---
 
 ## Top priority
 
-**#18, #19, and #20 are the current top of the queue** — all three are
-spec'd now (#20: [spec_pdf_file_association.md](spec_pdf_file_association.md);
-#18 and #19: [spec_printer_options.md](spec_printer_options.md)). None
-are built.
+**#20 is the current top of the queue** — it's spec'd
+([spec_pdf_file_association.md](spec_pdf_file_association.md)), not built.
 
 > This file lists only work that has **not** been done — a finished item
 > is deleted, not marked done. Numbers are stable IDs, so a gap just means
 > something shipped; what shipped is recorded in the spec files under
-> [docs/](.) and their appendices, not here.
-
-### 18. Print in color
-
-> 📄 **Spec:** [spec_printer_options.md](spec_printer_options.md) — the
-> **Color / Black & white** printer option. Not yet built.
-
-Send both passes as **color** jobs (`lp -o print-color-mode=color`), not
-whatever the driver defaults to, with the choice saved and bound to the
-printer.
-
-**Value:** engraved sheet music increasingly ships with color — color
-chord diagrams, highlighted repeats and endings, capo/section labels,
-publisher accents. A grayscale job flattens those into near-invisible
-mid-grays. The two-pass workflow also makes a wrong default expensive:
-you don't notice until the whole flipped stack is on the tray. Color by
-default, switch to B&W to save ink.
-
-### 19. Fit every page to the tray size so the printer never pauses
-
-> 📄 **Spec:** [spec_printer_options.md](spec_printer_options.md) — the
-> **Resize pages to fit the sheet** printer option (`lp -o fit-to-page`,
-> default on). Not yet built.
-
-Today a PDF that's A4, or Letter-with-a-hair-off, or any non-tray size
-makes the printer **stop and wait** — "load A4 in tray 1", or a driver
-confirmation dialog — mid-run. Between pass 1 and pass 2 that's a stall
-you can easily miss, and it defeats the whole point of the guided run
-dialog (don't make the human babysit the run). Musicnotes and other
-stores mix Letter and A4 freely, and a set-list can now contain both in
-one job.
-
-**Value:** the run goes start-to-finish without the printer pausing for
-input; scaling is predictable across a mixed set-list.
+> [docs/](.) and their appendices, not here. (#18 print in color and #19
+> fit-to-page shipped 2026-09-06 as printer options —
+> [spec_printer_options.md](spec_printer_options.md),
+> [specification.md Appendix C.5](specification.md#c5-printer-options).)
 
 ### 20. Register as a PDF handler ("Open With" association)
 
@@ -100,6 +70,11 @@ Wanted, but after the items above.
 
 ### 3. Extended printer-setup dialog
 
+> Lands on the per-printer options mechanism — the `OptionsDialog` from
+> [spec_printer_options.md](spec_printer_options.md) §8. Once page
+> order / duplex / rotation are added as options it splits into an
+> **Output** and a **Printer behavior** group; no separate window.
+
 A secondary "Printer Setup…" window, off the main flow, that holds the
 printer-behavior toggles below (duplex capability, page order, back-side
 rotation) plus anything else that's set once per printer and rarely
@@ -111,6 +86,12 @@ option to configure or fix printer-specific behavior without cluttering
 the everyday screen.
 
 ### 4. Detect/select true duplex support
+
+> Lands on the per-printer options mechanism —
+> [spec_printer_options.md](spec_printer_options.md) §8 (row 4). Adds a
+> `true_duplex` option; when on, `_start_run` sends one `two_sided=True`
+> job and skips the flip. The one roadmap item that also touches the
+> state machine.
 
 Let the user mark a printer as **capable of real double-sided printing**
 and, when set, skip the two-pass-plus-flip workflow entirely: send one job
@@ -126,6 +107,11 @@ asking the user to know it.
 
 ### 5. Page order as a first-class, per-printer setting
 
+> Lands on the per-printer options mechanism —
+> [spec_printer_options.md](spec_printer_options.md) §8 (row 3). Moves the
+> global `reverse_page_order` into `printer_options`, one-time-migrating
+> the current global value into the selected printer's entry.
+
 Partly done: page order is now controlled by `reverse_page_order` in the
 settings file (default on), applied via `lp -o outputorder=reverse` — see
 [specification.md §7.4](specification.md#74-printer-assumptions). What's
@@ -138,6 +124,11 @@ turns it into something a non-technical user can actually find and set,
 and something that survives switching between two printers.
 
 ### 6. Configurable 180° rotation on pass 2
+
+> Lands on the per-printer options mechanism —
+> [spec_printer_options.md](spec_printer_options.md) §8 (row 5). A
+> `rotate_back_180` option; `build_pass_pdf(plan, "odd", …)` rotates each
+> page before writing. Pure `pdfio` change, no state-machine impact.
 
 Add back `rotate_back_side_180` as a per-printer setting: rotate every
 page in the second pass 180° before printing.
@@ -201,6 +192,11 @@ fewer chances to misalign the stack or lose count partway through.
 Not committed to — captured so they're not lost.
 
 ### 10. Printer profiles
+
+> Mostly delivered by the per-printer options mechanism —
+> [spec_printer_options.md](spec_printer_options.md) §4.5. Options are
+> already keyed by CUPS queue name in `settings.json` → `printer_options`;
+> once #4–#6 are options, this is done for those settings.
 
 Save the duplex/order/rotation settings (#4–#6) **per printer**, not
 globally, so someone who prints at home and at a rehearsal hall doesn't

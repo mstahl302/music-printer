@@ -27,3 +27,25 @@ def test_submit_reverse_can_be_disabled(monkeypatch):
     seen = _capture(monkeypatch)
     printing.submit("/tmp/x.pdf", "P", reverse_order=False)
     assert "outputorder=reverse" not in " ".join(seen["cmd"])
+
+
+def _opts(cmd):
+    """Every option value that follows a '-o' flag in cmd."""
+    return [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-o"]
+
+
+def test_submit_defaults_to_color_no_fit(monkeypatch):
+    seen = _capture(monkeypatch)
+    printing.submit("/tmp/x.pdf", "P")
+    opts = _opts(seen["cmd"])
+    assert "print-color-mode=color" in opts
+    assert "fit-to-page" not in opts
+
+
+def test_submit_mono_and_fit(monkeypatch):
+    seen = _capture(monkeypatch)
+    printing.submit("/tmp/x.pdf", "P", color_mode="mono", fit_to_page=True)
+    opts = _opts(seen["cmd"])
+    assert "print-color-mode=monochrome" in opts
+    assert "fit-to-page" in opts
+    assert "print-color-mode=color" not in opts

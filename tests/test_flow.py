@@ -19,6 +19,7 @@ class FakePrinting:
     def __init__(self, statuses):
         self.statuses = list(statuses)
         self.submitted = []          # lp -t title per submit
+        self.submit_kw = []          # the kwargs each submit() got
         self.canceled = []
         self._n = 0
 
@@ -30,6 +31,7 @@ class FakePrinting:
 
     def submit(self, path, printer, *, title=None, **kw):
         self.submitted.append(title)
+        self.submit_kw.append(kw)
         return f"FAKE-{len(self.submitted)}"
 
     def job_status(self, job_id):
@@ -186,6 +188,74 @@ def test_cancel_during_pass2_warns_about_feed_tray(tmp_path, monkeypatch, no_dia
 
     app._close_dialog()
     assert app.filelist.files == [pdf]          # a cancelled run keeps the set
+    app._on_close()
+
+
+# -------------------------------------------------- printer options
+from musicprinter import printer_options, settings   # noqa: E402
+
+
+def test_submit_carries_the_printer_options(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
+    app = _app_with(monkeypatch, fake, [pdf])
+
+    app._printer_opts = {"color_mode": "mono", "fit_to_page": False}
+    app._start_run(app.setplan)
+    _pump(app, lambda: app.state == main.WAIT_FOR_FLIP)
+    app._start_pass2()
+    _pump(app, lambda: app.state == main.DONE)
+
+    assert len(fake.submit_kw) == 2                       # both passes
+    for kw in fake.submit_kw:
+        assert kw["color_mode"] == "mono"
+        assert kw["fit_to_page"] is False
+    app._on_close()
+
+
+def test_gear_disabled_during_a_run(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["processing"])
+    pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
+    app = _app_with(monkeypatch, fake, [pdf])
+    assert str(app.options_btn.cget("state")) == "normal"
+
+    app._start_run(app.setplan)
+    _pump(app, lambda: app.state == main.PRINTING_PASS1)
+    assert str(app.options_btn.cget("state")) == "disabled"
+    app._open_options()                                   # guarded — no dialog
+    assert not any(isinstance(w, main.OptionsDialog) for w in app.winfo_children())
+    app._on_close()
+
+
+def test_apply_persists_bound_to_printer_and_close_does_not(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
+    app = _app_with(monkeypatch, fake, [pdf])
+    assert app.printer.get() == "FakePrinter"
+    assert app._printer_opts == {"color_mode": "color", "fit_to_page": True}
+    assert app.options_summary.get() == "Options: Color, fit-to-page"
+
+    # open, change both controls, Apply -> persisted under this printer
+    app._open_options()
+    dlg = next(w for w in app.winfo_children() if isinstance(w, main.OptionsDialog))
+    dlg._vars["color_mode"].set("mono")
+    dlg._vars["fit_to_page"].set(False)
+    dlg._apply()
+    assert app._printer_opts == {"color_mode": "mono", "fit_to_page": False}
+    assert app.options_summary.get() == "Options: B&W"
+    assert settings.load()["printer_options"]["FakePrinter"] == \
+        {"color_mode": "mono", "fit_to_page": False}
+    assert printer_options.for_printer(app.cfg, "FakePrinter") == \
+        {"color_mode": "mono", "fit_to_page": False}
+
+    # reopen, poke a control, close via the window box -> nothing changes
+    app._open_options()
+    dlg = next(w for w in app.winfo_children() if isinstance(w, main.OptionsDialog))
+    dlg._vars["color_mode"].set("color")
+    dlg._discard()
+    assert app._printer_opts == {"color_mode": "mono", "fit_to_page": False}
+    assert settings.load()["printer_options"]["FakePrinter"] == \
+        {"color_mode": "mono", "fit_to_page": False}
     app._on_close()
 
 

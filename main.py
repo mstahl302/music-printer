@@ -21,7 +21,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from musicprinter import jobs, printing, rundialog, settings, widgets
+from musicprinter import jobs, printer_options, printing, rundialog, settings, widgets
 from musicprinter.pdfio import PdfError, render_thumbnail_png
 
 # UI label  ->  strip mode
@@ -607,6 +607,132 @@ class PreviewDialog(tk.Toplevel):
             pass
 
 
+# ==================================================== printer options dialog
+class OptionsDialog(tk.Toplevel):
+    """Modal per-printer options. Edits a local draft; **Apply** is the only
+    commit (fires ``on_apply(values)``); closing any other way discards it.
+    See docs/spec_printer_options.md §4.2."""
+
+    def __init__(self, parent, *, printer_label: str, values: dict, on_apply) -> None:
+        super().__init__(parent)
+        self.title("Printer Options")
+        self.resizable(False, False)
+        self.transient(parent)
+        self._on_apply = on_apply
+        self._vars: dict[str, tk.Variable] = {}
+        self._closing = False
+        self._afters: list[str] = []
+
+        frm = ttk.Frame(self, padding=16)
+        frm.grid(sticky="nsew")
+        frm.columnconfigure(0, weight=1)
+
+        ttk.Label(frm, text=f"Options for {printer_label}",
+                  font=("TkDefaultFont", 13, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Separator(frm).grid(row=1, column=0, sticky="ew", pady=(8, 12))
+
+        body = ttk.Frame(frm)
+        body.grid(row=2, column=0, sticky="ew")
+        body.columnconfigure(0, weight=1)
+        r = 0
+        for spec in printer_options.REGISTRY:
+            cur = values.get(spec.key, spec.default)
+            if spec.kind == "radio":
+                var = tk.StringVar(value=str(cur))
+                ttk.Label(body, text=spec.label,
+                          font=("TkDefaultFont", 11, "bold")).grid(
+                    row=r, column=0, sticky="w", pady=(0, 2)); r += 1
+                pick = ttk.Frame(body)
+                pick.grid(row=r, column=0, sticky="w"); r += 1
+                for i, (val, lbl) in enumerate(spec.choices):
+                    ttk.Radiobutton(pick, text=lbl, value=val, variable=var).grid(
+                        row=0, column=i, padx=(0, 16))
+            elif spec.kind == "choice":
+                var = tk.StringVar(value=str(cur))
+                ttk.Label(body, text=spec.label,
+                          font=("TkDefaultFont", 11, "bold")).grid(
+                    row=r, column=0, sticky="w", pady=(0, 2)); r += 1
+                labels = [lbl for _v, lbl in spec.choices]
+                start = dict(spec.choices).get(cur, labels[0] if labels else "")
+                ttk.OptionMenu(body, var, start, *labels).grid(
+                    row=r, column=0, sticky="w"); r += 1
+            else:  # "check"
+                var = tk.BooleanVar(value=bool(cur))
+                ttk.Checkbutton(body, text=spec.label, variable=var).grid(
+                    row=r, column=0, sticky="w"); r += 1
+            ttk.Label(body, text=spec.help, foreground="#777",
+                      wraplength=360, justify="left").grid(
+                row=r, column=0, sticky="w", pady=(1, 14)); r += 1
+            self._vars[spec.key] = var
+
+        ttk.Separator(frm).grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        bar = ttk.Frame(frm)
+        bar.grid(row=4, column=0, sticky="ew")
+        bar.columnconfigure(0, weight=1)
+        self._apply_btn = widgets.button(bar, "Apply", widgets.BLUE, self._apply)
+        self._apply_btn.grid(row=0, column=1, sticky="e")
+
+        self.protocol("WM_DELETE_WINDOW", self._discard)
+        self.bind("<Escape>", lambda _e: self._discard())
+        self.bind("<Return>", lambda _e: self._apply())
+        self._center_on(parent)
+        self._afters.append(self.after(0, self._grab))
+
+    # ---- draft -> values ------------------------------------------
+    def _read(self) -> dict:
+        out: dict = {}
+        for spec in printer_options.REGISTRY:
+            v = self._vars[spec.key]
+            if spec.kind == "check":
+                out[spec.key] = bool(v.get())
+            elif spec.kind == "choice":
+                lbl_to_val = {lbl: val for val, lbl in spec.choices}
+                out[spec.key] = lbl_to_val.get(v.get(), spec.default)
+            else:  # radio
+                out[spec.key] = v.get()
+        return out
+
+    def _apply(self) -> None:
+        values = self._read()
+        self.close()
+        self._on_apply(values)
+
+    def _discard(self) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._closing = True
+        for tid in self._afters:
+            try:
+                self.after_cancel(tid)
+            except tk.TclError:
+                pass
+        self._afters.clear()
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+
+    def _grab(self) -> None:
+        if self._closing:
+            return
+        try:
+            self.grab_set()
+        except tk.TclError:
+            self._afters.append(self.after(80, self._grab))
+
+    def _center_on(self, parent) -> None:
+        try:
+            self.update_idletasks()
+            px, py = parent.winfo_rootx(), parent.winfo_rooty()
+            pw, ph = parent.winfo_width(), parent.winfo_height()
+            w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+            self.geometry(f"+{px + max(0, (pw - w) // 2)}+{py + max(0, (ph - h) // 3)}")
+        except tk.TclError:
+            pass
+
+
 # ================================================================ app
 class App(tk.Tk):
     def __init__(self) -> None:
@@ -629,6 +755,8 @@ class App(tk.Tk):
         self.printer = tk.StringVar(value=self.cfg["last_printer"])
         self.printer_display = tk.StringVar(value="")
         self._printers: dict[str, printing.Printer] = {}
+        self._printer_opts = printer_options.for_printer(self.cfg, self.printer.get())
+        self.options_summary = tk.StringVar(value="")
 
         self.setplan: jobs.SetPlan | None = None
         self._plan_token = 0
@@ -646,6 +774,7 @@ class App(tk.Tk):
 
         self._build()
         self._load_printers()
+        self._reload_printer_opts()
         self._after(80, self._pump)
 
     def _after(self, ms: int, fn) -> str:
@@ -672,15 +801,20 @@ class App(tk.Tk):
 
         ttk.Label(frm, text="Printer:").grid(row=0, column=0, sticky="w", **pad)
         self.printer_menu = ttk.OptionMenu(frm, self.printer_display, "")
-        self.printer_menu.grid(row=0, column=1, columnspan=2, sticky="ew", **pad)
-        ttk.Label(frm, textvariable=self.printer_warn, foreground="#b00").grid(
+        self.printer_menu.grid(row=0, column=1, sticky="ew", **pad)
+        self.options_btn = ttk.Button(frm, text="⚙", width=3, command=self._open_options)
+        self.options_btn.grid(row=0, column=2, sticky="e", padx=(0, 10))
+        ttk.Label(frm, textvariable=self.options_summary, foreground="#888",
+                  font=("TkDefaultFont", 10)).grid(
             row=1, column=1, columnspan=2, sticky="w", padx=10)
+        ttk.Label(frm, textvariable=self.printer_warn, foreground="#b00").grid(
+            row=2, column=1, columnspan=2, sticky="w", padx=10)
 
         self.filelist = FileList(frm, on_change=self._recompute)
-        self.filelist.grid(row=2, column=0, columnspan=3, sticky="ew", **pad)
+        self.filelist.grid(row=3, column=0, columnspan=3, sticky="ew", **pad)
 
         row = ttk.Frame(frm)
-        row.grid(row=3, column=0, columnspan=3, sticky="ew", **pad)
+        row.grid(row=4, column=0, columnspan=3, sticky="ew", **pad)
         row.columnconfigure(0, weight=1)
         self.add_btn = widgets.button(row, "Add PDFs…", widgets.BLUE, self._pick_files)
         self.add_btn.grid(row=0, column=0, sticky="w")
@@ -688,7 +822,7 @@ class App(tk.Tk):
         self.preview_btn.grid(row=0, column=1, sticky="e")
 
         ttk.Label(frm, textvariable=self.status, foreground="#555").grid(
-            row=4, column=0, columnspan=3, sticky="w", padx=10, pady=(2, 0))
+            row=5, column=0, columnspan=3, sticky="w", padx=10, pady=(2, 0))
 
         self._set_state(READY)
 
@@ -718,6 +852,29 @@ class App(tk.Tk):
         self.cfg["last_printer"] = name
         settings.save(self.cfg)
         self._check_printer()
+        self._reload_printer_opts()
+
+    # -------------------------------------------------- printer options
+    def _reload_printer_opts(self) -> None:
+        """Load the current printer's saved options and refresh the summary."""
+        self._printer_opts = printer_options.for_printer(self.cfg, self.printer.get())
+        self._refresh_options_summary()
+
+    def _refresh_options_summary(self) -> None:
+        self.options_summary.set(printer_options.summary_line(self._printer_opts))
+
+    def _open_options(self) -> None:
+        if self.state != READY:
+            return
+        p = self._printers.get(self.printer.get())
+        label = p.label if p else (self.printer.get() or "this printer")
+        OptionsDialog(self, printer_label=label, values=dict(self._printer_opts),
+                      on_apply=self._apply_printer_options)
+
+    def _apply_printer_options(self, values: dict) -> None:
+        self._printer_opts = dict(values)
+        printer_options.persist(self.cfg, self.printer.get(), self._printer_opts)
+        self._refresh_options_summary()
 
     def _sync_printer_display(self) -> None:
         p = self._printers.get(self.printer.get())
@@ -827,20 +984,24 @@ class App(tk.Tk):
         if self.dialog:
             self.dialog.show_phase(rundialog.PRINTING, heading=_PASS_HEADING[which],
                                    detail="Sending…")
+        # Read every Tk-thread value here; the worker only sees plain args.
+        opt_kw = printer_options.submit_kwargs(self._printer_opts)
         threading.Thread(target=self._submit_worker,
-                         args=(which, self.setplan, self.printer.get()),
+                         args=(which, self.setplan, self.printer.get(), opt_kw),
                          daemon=True).start()
 
-    def _submit_worker(self, which: str, setplan: jobs.SetPlan, printer_name: str) -> None:
+    def _submit_worker(self, which: str, setplan: jobs.SetPlan, printer_name: str,
+                       opt_kw: dict) -> None:
         try:
             pdf = jobs.build_pass_pdf(setplan, which, self._tmpdir)
             reverse = bool(self.cfg.get("reverse_page_order", True))
             job_id = printing.submit(pdf, printer_name,
                                      title=f"{setplan.run_title} · {which}",
-                                     reverse_order=reverse)
+                                     reverse_order=reverse, **opt_kw)
             settings.log(f"submit {which} job={job_id} file={pdf.name} "
                          f"files={setplan.n_files} sheets={setplan.sheets_to_prepare} "
-                         f"mode={setplan.strip_mode} reverse={reverse}")
+                         f"mode={setplan.strip_mode} reverse={reverse} "
+                         f"color={opt_kw.get('color_mode')} fit={opt_kw.get('fit_to_page')}")
             self._q.put(("submitted", which, job_id))
         except Exception as exc:
             self._q.put(("submit_err", which, exc))
@@ -1009,6 +1170,7 @@ class App(tk.Tk):
         self.state = state
         inputs = "normal" if state == READY else "disabled"
         self.printer_menu.config(state=inputs)
+        self.options_btn.config(state=inputs)
         self.add_btn.set_enabled(state == READY)
         self.filelist.set_enabled(state == READY)
         self.preview_btn.set_enabled(self._preview_ok())

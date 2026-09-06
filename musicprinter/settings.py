@@ -21,6 +21,7 @@ DEFAULTS: dict = {
     "last_folder": "",
     "confidence_threshold": 0.70,
     "reverse_page_order": True,      # add `-o outputorder=reverse` to lp
+    "printer_options": {},           # { queue_name: {color_mode, fit_to_page, …} }
 }
 
 

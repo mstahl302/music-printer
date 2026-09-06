@@ -98,6 +98,7 @@ def submit(
     two_sided: bool = False,
     fit_to_page: bool = False,
     reverse_order: bool = True,
+    color_mode: str = "color",
     title: str | None = None,
 ) -> str:
     """Queue ``path`` for printing and return the CUPS job id (``NAME-123``).
@@ -106,6 +107,11 @@ def submit(
     are delivered last-to-first so a face-up output tray ends up collated
     in reading order. This is the CUPS-level equivalent of what the
     Chrome / macOS print path does by default; raw ``lp`` does not.
+
+    ``color_mode`` is ``"color"`` or ``"mono"`` and is always sent
+    explicitly (``-o print-color-mode=color`` / ``=monochrome``) so a
+    driver whose own default is grayscale can't silently flatten a color
+    score.
     """
     cmd = ["lp"]
     if printer:
@@ -120,6 +126,10 @@ def submit(
         cmd += ["-o", "fit-to-page"]
     if reverse_order:
         cmd += ["-o", "outputorder=reverse"]
+    if color_mode == "mono":
+        cmd += ["-o", "print-color-mode=monochrome"]
+    elif color_mode == "color":
+        cmd += ["-o", "print-color-mode=color"]
     cmd += [str(path)]
 
     out = _run(cmd)  # "request id is NAME-123 (1 file(s))"

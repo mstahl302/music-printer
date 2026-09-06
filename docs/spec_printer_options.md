@@ -4,17 +4,16 @@
 page to the tray size** in [feature_requests.md](feature_requests.md).
 Also lays the **per-printer options mechanism** that #3, #4, #5, #6, #7
 and #10 all plug into.
-**Status:** DRAFT — not yet built.
+**Status:** IMPLEMENTED — built 2026-09-06.
 **Date:** 2026-09-06
 **Owner:** markstahl
 
 > Reconciliation with the shipped specs is by appendix, not by rewriting
-> them (see the repo convention). When this ships,
-> [specification.md](specification.md) gets **Appendix C.5** plus inline
-> ⚠ asides at §2, §4.1, §4.2, §7.4 and §11/Q3; **#18** and **#19** are
-> pruned from `feature_requests.md`. The exact edits are listed in
-> [§10](#10-doc-maintenance-when-this-ships). This file is the authority
-> for printer options.
+> them (see the repo convention). [specification.md](specification.md)
+> carries **Appendix C.5** plus inline ⚠ asides at §2, §4.1, §4.2, §7.4
+> and §11/Q3; **#18** and **#19** are removed from `feature_requests.md`.
+> The edits are listed in [§10](#10-doc-maintenance-when-this-ships).
+> This file is the authority for printer options.
 
 ---
 

@@ -24,7 +24,7 @@ Doing it by hand works but is fiddly:
   the odd side needs one more sheet than the even side, so you have to
   slip in a blank by hand or the last page lands on the wrong side.
 - Sheet music bought from **Musicnotes** usually arrives with a **cover
-  page** (title, licence text) as page 1. Printing it wastes a sheet and
+  page** (title, license text) as page 1. Printing it wastes a sheet and
   throws off the even/odd split for everything after it.
 
 Music Printer automates exactly that workflow.
@@ -60,6 +60,23 @@ Pick from the dropdown (your system default is preselected). If the
 printer is paused, the app tells you — jobs will queue but not print until
 you resume it.
 
+### 1a. Printer options (the gear)
+
+The **⚙ gear** to the right of the printer dropdown opens **Printer
+Options**:
+
+| Option | Default | What it does |
+|---|---|---|
+| **Color / Black & white** | Color | Sends every job as color or monochrome (`-o print-color-mode=…`). Switch to B&W to save ink; keep Color for chord diagrams and highlighted endings. |
+| **Resize pages to fit the sheet** | on | Scales each page to the printer's paper (`-o fit-to-page`) so it never stops mid-run to ask about an odd page size. |
+
+Click **Apply** to save; closing the window any other way keeps the
+previous settings. Options are **saved per printer** — set your home
+printer to B&W and the church printer to color, and each remembers.
+
+The line just under the dropdown (`Options: Color, fit-to-page`) is a
+read-only reminder of what's currently selected.
+
 ### 2. Choose a PDF
 
 Click **Choose PDF…** and pick a sheet music file. Password-protected
@@ -71,7 +88,7 @@ PDFs aren't supported.
 |---|---|
 | **Always Remove First Page** | Drops page 1 unconditionally (unless the file is a single page). |
 | **Don't Remove** | Prints the PDF exactly as-is. |
-| **Smart Strip (remove if detected)** — default | Removes page 1 only if it looks like a vendor cover: no engraved music on the page *and* Musicnotes licence boilerplate text. Conservative — when in doubt it keeps the page. |
+| **Smart Strip (remove if detected)** — default | Removes page 1 only if it looks like a vendor cover: no engraved music on the page *and* Musicnotes license boilerplate text. Conservative — when in doubt it keeps the page. |
 
 The detection signals are documented in
 [docs/cover_signals.md](docs/cover_signals.md).
@@ -133,12 +150,14 @@ waiting for the flip:
   default; printing raw with `lp` does not. It's on by default; if your
   printouts come out in reverse reading order, set `reverse_page_order` to
   `false` in `settings.json` (see below).
-- **Also fixed for this version:** short-edge flip, no back-side rotation,
-  and pages print at 100 % (no scaling).
+- **Fixed for this version:** short-edge flip and no back-side rotation.
+  Color and fit-to-page are set per printer in **Printer Options** (the
+  gear); everything else prints at 100 %.
 - **Settings and a log** are kept in
   `~/Library/Application Support/Music Printer/`. `settings.json` holds
-  `reverse_page_order` and `confidence_threshold` (the smart-strip
-  cutoff) in addition to your last printer / folder / mode.
+  `reverse_page_order`, `confidence_threshold` (the smart-strip cutoff),
+  and `printer_options` (the per-printer color / fit-to-page choices), in
+  addition to your last printer / folder / mode.
 
 ## See also
 
