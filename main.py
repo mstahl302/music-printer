@@ -255,9 +255,26 @@ class FileList(ttk.Frame):
             txt, fg = f"{e.n_effective} pages", "#888"
         tk.Label(row, text=txt, bg=stripe, fg=fg).grid(row=0, column=2, padx=8)
 
-        rm = widgets.button(row, "×", widgets.RED, lambda p=path: self._remove(p))
-        rm.configure(padx=6, pady=0, font=("TkDefaultFont", 11))
-        rm.grid(row=0, column=3, padx=(0, 7))
+        self._remove_icon(row, path, stripe).grid(row=0, column=3, padx=(6, 7))
+
+    # a red circle with a white X — drawn, not an image asset, so it stays
+    # crisp and needs nothing bundled
+    RM_D = 18                      # diameter; fits inline in a 32px row
+    _RM_RED, _RM_RED_HOVER = "#f5333f", "#d92d38"
+
+    def _remove_icon(self, row, path: Path, stripe: str) -> tk.Canvas:
+        d, m = self.RM_D, 5
+        c = tk.Canvas(row, width=d, height=d, bg=stripe, highlightthickness=0,
+                      bd=0, cursor="pointinghand", takefocus=0)
+        oval = c.create_oval(1, 1, d - 1, d - 1, fill=self._RM_RED, outline="",
+                             disabledfill="#e2bcbf")
+        for x0, x1 in ((m, d - m), (d - m, m)):
+            c.create_line(x0, m, x1, d - m, fill="white", width=2.4,
+                          capstyle="round", disabledfill="#f4eaea")
+        c.bind("<Button-1>", lambda _e, p=path: self._remove(p))
+        c.bind("<Enter>", lambda _e: c.itemconfigure(oval, fill=self._RM_RED_HOVER))
+        c.bind("<Leave>", lambda _e: c.itemconfigure(oval, fill=self._RM_RED))
+        return c
 
     def _remove(self, path: Path) -> None:
         self.files = [p for p in self.files if p != path]
