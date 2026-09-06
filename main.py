@@ -263,13 +263,13 @@ class FileList(ttk.Frame):
     _RM_RED, _RM_RED_HOVER = "#f5333f", "#d92d38"
 
     def _remove_icon(self, row, path: Path, stripe: str) -> tk.Canvas:
-        d, m = self.RM_D, 5
+        d, m = self.RM_D, 6.5           # m = X inset from the disc edge
         c = tk.Canvas(row, width=d, height=d, bg=stripe, highlightthickness=0,
                       bd=0, cursor="pointinghand", takefocus=0)
         oval = c.create_oval(1, 1, d - 1, d - 1, fill=self._RM_RED, outline="",
                              disabledfill="#e2bcbf")
         for x0, x1 in ((m, d - m), (d - m, m)):
-            c.create_line(x0, m, x1, d - m, fill="white", width=2.4,
+            c.create_line(x0, m, x1, d - m, fill="white", width=2.2,
                           capstyle="round", disabledfill="#f4eaea")
         c.bind("<Button-1>", lambda _e, p=path: self._remove(p))
         c.bind("<Enter>", lambda _e: c.itemconfigure(oval, fill=self._RM_RED_HOVER))
