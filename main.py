@@ -325,15 +325,26 @@ class FileList(ttk.Frame):
 
 # ========================================================= preview dialog
 class PreviewDialog(tk.Toplevel):
-    def __init__(self, parent, *, setplan: jobs.SetPlan, on_start) -> None:
+    def __init__(self, parent, *, setplan: jobs.SetPlan, threshold: float, on_start,
+                 on_mode_change=None, on_close=None) -> None:
         super().__init__(parent)
         self.title("Preview")
         self.resizable(False, False)
         self.transient(parent)
         self._setplan = setplan
+        self._threshold = threshold
         self._on_start = on_start
-        self._thumbs: list[tk.PhotoImage] = []
+        self._on_mode_change = on_mode_change
+        self._on_close = on_close
+        self._files = [e.path for e in setplan.entries]
+        self._mode = setplan.strip_mode
+        self._replan_token = 0
+        self._thumb_token = 0
+        self._busy = False
+        self._prev_offsets = [e.cover_removed for e in setplan.ok_entries]
+        self._thumbs: dict[int, tk.PhotoImage] = {}
         self._thumb_labels: list[ttk.Label] = []
+        self._blocks: list[dict] = []
         self._q: queue.Queue = queue.Queue()
         self._closing = False
         self._afters: list[str] = []
@@ -341,14 +352,24 @@ class PreviewDialog(tk.Toplevel):
         frm = ttk.Frame(self, padding=16)
         frm.grid(sticky="nsew")
 
+        header = ttk.Frame(frm)
+        header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        ttk.Label(header, text="Strip cover sheet:").grid(row=0, column=0, sticky="w")
+        self._mode_label = tk.StringVar(
+            value=MODE_TO_LABEL.get(self._mode, DEFAULT_COVER_LABEL))
+        self._mode_menu = ttk.OptionMenu(
+            header, self._mode_label, self._mode_label.get(), *COVER_MODES,
+            command=self._change_mode)
+        self._mode_menu.grid(row=0, column=1, sticky="w", padx=(8, 0))
+
         canvas = tk.Canvas(frm, highlightthickness=0, width=460,
                            height=min(430, 96 * max(1, setplan.n_files) + 8))
         sb = ttk.Scrollbar(frm, orient="vertical", command=canvas.yview)
         body = ttk.Frame(canvas)
         canvas.create_window((0, 0), window=body, anchor="nw")
         canvas.configure(yscrollcommand=sb.set)
-        canvas.grid(row=0, column=0, sticky="nsew")
-        sb.grid(row=0, column=1, sticky="ns")
+        canvas.grid(row=1, column=0, sticky="nsew")
+        sb.grid(row=1, column=1, sticky="ns")
         body.bind("<Configure>",
                   lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
         try:
@@ -357,7 +378,6 @@ class PreviewDialog(tk.Toplevel):
             pass
         bind_region_scroll(canvas)
 
-        layout = setplan.layout
         for i, e in enumerate(setplan.ok_entries):
             block = ttk.Frame(body, padding=(0, 8))
             block.grid(row=i, column=0, sticky="ew")
@@ -369,55 +389,143 @@ class PreviewDialog(tk.Toplevel):
                 row=0, column=1, sticky="w")
             line = ttk.Frame(block)
             line.grid(row=1, column=1, sticky="w", pady=(2, 0))
-            col = 0
-            if e.cover_removed:
-                chip = tk.Label(line, text=" cover removed ", bg=_PINK_BG, fg=_PINK_FG,
-                                font=("TkDefaultFont", 9))
-                chip.grid(row=0, column=col, padx=(0, 6))
-                col += 1
-            sheets = layout.file_sheets(i) if layout else 0
-            ttk.Label(line, text=f"{e.n_effective} pages · {sheets} sheets",
-                      foreground="#777").grid(row=0, column=col)
+            chip = tk.Label(line, text=" cover removed ", bg=_PINK_BG, fg=_PINK_FG,
+                            font=("TkDefaultFont", 9))
+            count = ttk.Label(line, foreground="#777")
+            self._blocks.append({"chip": chip, "count": count})
 
         bar = ttk.Frame(frm, padding=(0, 14, 0, 0))
-        bar.grid(row=1, column=0, columnspan=2, sticky="ew")
+        bar.grid(row=2, column=0, columnspan=2, sticky="ew")
         bar.columnconfigure(0, weight=1)
-        n = setplan.sheets_to_prepare
         msg = ttk.Frame(bar)
         msg.grid(row=0, column=0, sticky="w")
-        ttk.Label(msg, text=f"Printing requires {n} sheet{'s' if n != 1 else ''} of paper",
+        self._sheets_var = tk.StringVar()
+        self._hint_var = tk.StringVar(value="When you're ready, click Start.")
+        ttk.Label(msg, textvariable=self._sheets_var,
                   font=("TkDefaultFont", 13, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(msg, text="When you're ready, click Start.",
+        ttk.Label(msg, textvariable=self._hint_var,
                   foreground="#666").grid(row=1, column=0, sticky="w")
-        widgets.button(bar, "Start", widgets.BLUE, self._start, big=True).grid(row=0, column=1)
+        self._start_btn = widgets.button(bar, "Start", widgets.BLUE, self._start, big=True)
+        self._start_btn.grid(row=0, column=1)
 
+        self._apply_plan(setplan)
+        self.protocol("WM_DELETE_WINDOW", self._dismiss)
         self._center_on(parent)
         self._afters.append(self.after(0, self._grab))
         self._afters.append(self.after(60, self._pump))
-        threading.Thread(target=self._render_thumbs,
-                         args=([e.path for e in setplan.ok_entries],
-                               [e.cover_removed for e in setplan.ok_entries]),
+        ok = setplan.ok_entries
+        self._kick_thumbs(list(range(len(ok))),
+                          [e.path for e in ok], [e.cover_removed for e in ok])
+
+    # ---- plan -> widgets --------------------------------------
+    def _apply_plan(self, plan: jobs.SetPlan) -> None:
+        self._setplan = plan
+        layout = plan.layout
+        for i, e in enumerate(plan.ok_entries):
+            b = self._blocks[i]
+            sheets = layout.file_sheets(i) if layout else 0
+            b["count"].configure(text=f"{e.n_effective} pages · {sheets} sheets")
+            if e.cover_removed:
+                b["chip"].grid(row=0, column=0, padx=(0, 6))
+                b["count"].grid(row=0, column=1)
+            else:
+                b["chip"].grid_remove()
+                b["count"].grid(row=0, column=0)
+        n = plan.sheets_to_prepare
+        self._sheets_var.set(
+            f"Printing requires {n} sheet{'s' if n != 1 else ''} of paper")
+
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        self._start_btn.set_enabled(not busy)
+        try:
+            self._mode_menu.configure(state="disabled" if busy else "normal")
+        except tk.TclError:
+            pass
+        self._hint_var.set("Recalculating…" if busy else "When you're ready, click Start.")
+
+    # ---- live strip-mode change -----------------------------
+    def _change_mode(self, label) -> None:
+        mode = COVER_MODES[label]
+        if mode == self._mode:
+            return
+        self._mode = mode
+        if self._on_mode_change:
+            self._on_mode_change(mode)
+        self._replan_token += 1
+        token = self._replan_token
+        self._set_busy(True)
+        threading.Thread(target=self._replan_worker, args=(token, mode),
                          daemon=True).start()
 
-    def _render_thumbs(self, paths, offsets) -> None:
-        for i, (p, off) in enumerate(zip(paths, offsets)):
+    def _replan_worker(self, token: int, mode: str) -> None:
+        try:
+            plan = jobs.build_plan(self._files, mode, threshold=self._threshold)
+            self._q.put(("replan", token, plan))
+        except Exception as exc:
+            self._q.put(("replan_err", token, str(exc)))
+
+    def _adopt_plan(self, plan: jobs.SetPlan) -> None:
+        new_offsets = [e.cover_removed for e in plan.ok_entries]
+        changed = [i for i, (a, b) in enumerate(zip(self._prev_offsets, new_offsets))
+                   if a != b]
+        self._prev_offsets = new_offsets
+        self._apply_plan(plan)
+        self._set_busy(False)
+        if changed:
+            ok = plan.ok_entries
+            self._kick_thumbs(changed, [ok[i].path for i in changed],
+                              [new_offsets[i] for i in changed])
+
+    def _replan_failed(self, err: str) -> None:
+        self._mode = self._setplan.strip_mode
+        self._mode_label.set(MODE_TO_LABEL.get(self._mode, DEFAULT_COVER_LABEL))
+        if self._on_mode_change:
+            self._on_mode_change(self._mode)
+        self._set_busy(False)
+        self._hint_var.set(f"Couldn't re-read the files: {err}")
+
+    # ---- thumbnails -----------------------------------------
+    def _kick_thumbs(self, indices, paths, offsets) -> None:
+        self._thumb_token += 1
+        token = self._thumb_token
+        for i in indices:
+            if i < len(self._thumb_labels):
+                self._thumb_labels[i].configure(image="", text="…")
+        threading.Thread(target=self._render_thumbs,
+                         args=(token, list(zip(indices, paths, offsets))),
+                         daemon=True).start()
+
+    def _render_thumbs(self, token: int, items) -> None:
+        for i, p, off in items:
             try:
                 png = render_thumbnail_png(p, off, max_px=132)
             except Exception:
                 png = None
-            self._q.put((i, png))
+            self._q.put(("thumb", token, i, png))
 
     def _pump(self) -> None:
         try:
             while True:
-                i, png = self._q.get_nowait()
-                if png and i < len(self._thumb_labels):
+                msg = self._q.get_nowait()
+                if msg[0] == "thumb":
+                    _tag, token, i, png = msg
+                    if token != self._thumb_token or not png or i >= len(self._thumb_labels):
+                        continue
                     try:
                         img = tk.PhotoImage(data=base64.b64encode(png).decode(), format="png")
-                        self._thumbs.append(img)
+                        self._thumbs[i] = img
                         self._thumb_labels[i].configure(image=img, text="")
                     except tk.TclError:
                         pass
+                elif msg[0] == "replan":
+                    _tag, token, plan = msg
+                    if token == self._replan_token:
+                        self._adopt_plan(plan)
+                elif msg[0] == "replan_err":
+                    _tag, token, err = msg
+                    if token == self._replan_token:
+                        self._replan_failed(err)
         except queue.Empty:
             pass
         if self._closing:
@@ -429,9 +537,17 @@ class PreviewDialog(tk.Toplevel):
             pass
 
     def _start(self) -> None:
+        if self._busy:
+            return
         plan = self._setplan
         self.close()
         self._on_start(plan)
+
+    def _dismiss(self) -> None:
+        cb = self._on_close
+        self.close()
+        if cb:
+            cb()
 
     def close(self) -> None:
         self._closing = True
@@ -494,8 +610,6 @@ class App(tk.Tk):
         self.printer = tk.StringVar(value=self.cfg["last_printer"])
         self.printer_display = tk.StringVar(value="")
         self._printers: dict[str, printing.Printer] = {}
-        self.cover_label = tk.StringVar(
-            value=MODE_TO_LABEL.get(self.cfg["strip_mode"], DEFAULT_COVER_LABEL))
 
         self.setplan: jobs.SetPlan | None = None
         self._plan_token = 0
@@ -543,17 +657,11 @@ class App(tk.Tk):
         ttk.Label(frm, textvariable=self.printer_warn, foreground="#b00").grid(
             row=1, column=1, columnspan=2, sticky="w", padx=10)
 
-        ttk.Label(frm, text="Strip Cover Sheet:").grid(row=2, column=0, sticky="w", **pad)
-        self.cover_menu = ttk.OptionMenu(
-            frm, self.cover_label, self.cover_label.get(), *COVER_MODES,
-            command=lambda _=None: self._recompute())
-        self.cover_menu.grid(row=2, column=1, columnspan=2, sticky="ew", **pad)
-
         self.filelist = FileList(frm, on_change=self._recompute)
-        self.filelist.grid(row=3, column=0, columnspan=3, sticky="ew", **pad)
+        self.filelist.grid(row=2, column=0, columnspan=3, sticky="ew", **pad)
 
         row = ttk.Frame(frm)
-        row.grid(row=4, column=0, columnspan=3, sticky="ew", **pad)
+        row.grid(row=3, column=0, columnspan=3, sticky="ew", **pad)
         row.columnconfigure(0, weight=1)
         self.add_btn = widgets.button(row, "Add PDFs…", widgets.BLUE, self._pick_files)
         self.add_btn.grid(row=0, column=0, sticky="w")
@@ -561,7 +669,7 @@ class App(tk.Tk):
         self.preview_btn.grid(row=0, column=1, sticky="e")
 
         ttk.Label(frm, textvariable=self.status, foreground="#555").grid(
-            row=5, column=0, columnspan=3, sticky="w", padx=10, pady=(2, 0))
+            row=4, column=0, columnspan=3, sticky="w", padx=10, pady=(2, 0))
 
         self._set_state(READY)
 
@@ -617,8 +725,6 @@ class App(tk.Tk):
         self.filelist.add(paths)
 
     def _recompute(self) -> None:
-        self.cfg["strip_mode"] = COVER_MODES[self.cover_label.get()]
-        settings.save(self.cfg)
         if self.state != READY:
             return
         self.setplan = None
@@ -659,7 +765,15 @@ class App(tk.Tk):
     def _open_preview(self) -> None:
         if not self._preview_ok():
             return
-        PreviewDialog(self, setplan=self.setplan, on_start=self._start_run)
+        PreviewDialog(self, setplan=self.setplan,
+                      threshold=float(self.cfg["confidence_threshold"]),
+                      on_start=self._start_run,
+                      on_mode_change=self._persist_strip_mode,
+                      on_close=self._recompute)
+
+    def _persist_strip_mode(self, mode: str) -> None:
+        self.cfg["strip_mode"] = mode
+        settings.save(self.cfg)
 
     def _preview_ok(self) -> bool:
         return (self.state == READY and self.setplan is not None
@@ -876,7 +990,6 @@ class App(tk.Tk):
         self.state = state
         inputs = "normal" if state == READY else "disabled"
         self.printer_menu.config(state=inputs)
-        self.cover_menu.config(state=inputs)
         self.add_btn.set_enabled(state == READY)
         self.filelist.set_enabled(state == READY)
         self.preview_btn.set_enabled(self._preview_ok())

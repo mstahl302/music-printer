@@ -1,13 +1,15 @@
 # Music Printer — Feature Requests
 
 **Status:** BACKLOG — ideas and requests, not yet scheduled or spec'd.
-**Date:** 2026-09-01 · updated 2026-09-02
+**Date:** 2026-09-01 · updated 2026-09-05
 **Owner:** markstahl
 
 Grouped by how badly they're wanted, then roughly by priority within each
 group. Nothing here is designed yet — when an item is picked up, it gets
-its own design pass (and, where it touches printing behavior, an update to
-[specification.md](specification.md)).
+its own design pass. That design lands as its **own** spec file; the
+originating spec ([specification.md](specification.md) or a feature spec)
+is not rewritten — it gets a short **appendix** noting what changed and
+pointing at the new spec.
 
 > **Note on scope:** several items below (duplex mode, back-side rotation,
 > full per-printer page-order handling, colour output, media-size
@@ -16,64 +18,20 @@ its own design pass (and, where it touches printing behavior, an update to
 > and [§7.4](specification.md#74-printer-assumptions) that were originally
 > fixed. Page order has already been reopened (it's a settings-file value
 > now — see #5). That's fine — this doc is where "maybe later" lives — but
-> when one of these is actioned, the spec needs a matching revision, not a
-> quiet contradiction.
+> when one of these is actioned, the relevant spec gets a matching
+> appendix, not a quiet contradiction.
 
 ---
 
 ## Top priority
 
-**#1 and #2 are built** — kept here for provenance. **#18, #19, and #20
-are the current top of the queue** — #20 is spec'd, #18 and #19 are not.
+**#18, #19, and #20 are the current top of the queue** — #20 is spec'd,
+#18 and #19 are not.
 
-### 1. Guided-print dialog with a louder flip cue
-
-> ✅ **Built.** Spec: [spec_guided_print_dialog.md](spec_guided_print_dialog.md).
-
-Replace the inline progress strip and flip panel with a dedicated **print
-dialog** that opens when the user clicks Start: a busy/progress bar and a
-Cancel button, modal to the run so the main window's controls aren't live
-mid-job.
-
-When pass 1 finishes and it's time to flip, make the prompt **impossible
-to miss**: an audible cue (a ding) plus a large **green "Continue — pages
-are flipped" button** in the dialog, with Cancel kept visually secondary
-(red). Today the flip prompt is a small framed button
-([main.py §flip_frame](../main.py)) that someone looking away from the
-screen can easily sit through.
-
-**Value:** the flip is the one point in the run where the app is waiting
-on the human, and missing it stalls the job indefinitely. A separate
-dialog keeps the run's state in one place (progress, cancel, flip), and a
-loud, big-target, colour-coded cue matches how much the moment matters.
-
-### 2. Batch / set-list printing
-
-> ✅ **Built.** Spec: [spec_batch_printing.md](spec_batch_printing.md). The app
-> is now multi-file-native; a list of one is the everyday case.
-
-Let the user select **multiple PDFs**, arrange them in set-list order (the
-order a choir or worship service will actually sing them), preview the
-combined plan, and print the whole set as one guided two-pass job instead
-of running the app once per song.
-
-The key correctness requirement: **each song must start on a front-facing
-page**, so the printed stack can be split back into individual songs (or
-handed out mid-packet) without hunting for where one ends and the next
-begins. That means each song's own effective page count gets padded to
-*even* before concatenation (not just when the file's own count is odd),
-so the next song always lands back on an odd (front) position — a
-generalization of the single-file blank-pad rule in
-[§7.2](specification.md#72-page-set-computation). The preview needs to
-show the plan for *every* file in the set, not just a single thumbnail,
-including a **running total of sheets across the whole batch** so the
-user knows the total paper cost before committing to a long run.
-
-**Value:** this is the actual real-world use case for a choir member or
-accompanist — printing an entire Sunday's or a whole recital's worth of
-music as one packet, in performance order, in one sitting instead of N
-manual runs through the app, with no surprise about how much paper it'll
-take.
+> This file lists only work that has **not** been done — a finished item
+> is deleted, not marked done. Numbers are stable IDs, so a gap just means
+> something shipped; what shipped is recorded in the spec files under
+> [docs/](.) and their appendices, not here.
 
 ### 18. Print in colour
 
@@ -100,9 +58,10 @@ never see a size they have to negotiate.
 Today a PDF that's A4, or Letter-with-a-hair-off, or any non-tray size
 makes the printer **stop and wait** — "load A4 in tray 1", or a driver
 confirmation dialog — mid-run. Between pass 1 and pass 2 that's a stall
-you can easily miss, and it defeats the whole point of feature #1 (don't
-make the human babysit the run). Musicnotes and other stores mix Letter
-and A4 freely, and a set-list (#2) can now contain both in one job.
+you can easily miss, and it defeats the whole point of the guided run
+dialog (don't make the human babysit the run). Musicnotes and other
+stores mix Letter and A4 freely, and a set-list can now contain both in
+one job.
 
 **Value:** the run goes start-to-finish without the printer pausing for
 input; page size is consistent across a mixed set-list; margins and
@@ -224,7 +183,7 @@ document.
 **Value:** lets someone print at a copy shop, on a printer this Mac can't
 reach, or queue the two halves for later: load FIRST, print it, flip the
 stack exactly as the app would have prompted, then load SECOND. Applies
-equally to a single file or a whole batch (#2) — a batch would export as
+equally to a single file or a whole set-list — a set-list would export as
 one FIRST/SECOND pair covering the entire set.
 
 ### 9. Multiple copies as two big passes, one flip
@@ -233,9 +192,9 @@ Add a copies count to a print run. Rather than repeating the whole
 two-pass-and-flip cycle once per copy (flip after copy 1, print copy 2,
 flip again, …), run it as **one EVEN mega-pass covering every copy
 back-to-back, a single flip, then one ODD mega-pass covering every
-copy** — the same mechanism as batch/set-list printing (#2), just with the
-same file repeated N times instead of N different songs, and could reuse
-that plumbing directly.
+copy** — the same mechanism as set-list printing, just with the same file
+repeated N times instead of N different songs, and could reuse that
+plumbing directly.
 
 **Value:** for choir handouts or rehearsal copies, this turns "flip 6
 times to print 6 copies" into "flip once." Fewer physical touches means
@@ -256,8 +215,8 @@ need to redo the welcome flow every time they switch. Natural companion to
 
 ### 11. Saved set-lists
 
-Once batch printing (#2) exists, let a set of files + order be saved under
-a name ("2026-09-06 Service") and reprinted later without reselecting
+Set-list printing exists now; let a set of files + order be saved under a
+name ("2026-09-06 Service") and reprinted later without reselecting
 files — the realistic case is the same weekly rotation with small changes.
 
 ### 12. Per-file cover-strip override in a batch
@@ -265,6 +224,11 @@ files — the realistic case is the same weekly rotation with small changes.
 In batch mode, let one file in the set override the global cover-strip
 mode (e.g. one song is already stripped, or isn't from Musicnotes at all
 and needs "Don't remove" while the rest use Smart).
+
+The global control now lives on the preview dialog and re-plans the
+thumbnails live ([spec_preview_strip_control.md](spec_preview_strip_control.md));
+that spec was written as the first step toward this per-file version —
+`build_plan` would take a per-file mode map instead of one `strip_mode`.
 
 ### 13. More cover-sheet vendors
 
@@ -285,10 +249,10 @@ If pass 2 fails partway (paper jam, printer goes offline, printer
 disconnects), let the user retry just that pass instead of starting the
 whole file over from Start.
 
-> Round-1 review of spec #1 rejected retry *after a user cancel* — by then
-> the stack is usually misaligned. Retry after a *hardware* failure (jam,
-> offline), caught before any sheet is mishandled, may still be worth it —
-> revisit if it comes up.
+> Round-1 review of the guided-print-dialog spec rejected retry *after a
+> user cancel* — by then the stack is usually misaligned. Retry after a
+> *hardware* failure (jam, offline), caught before any sheet is
+> mishandled, may still be worth it — revisit if it comes up.
 
 ### 16. Windows/Linux port
 
@@ -302,4 +266,4 @@ priority given this started as a personal macOS tool.
 When the run dialog reaches the flip step, bounce the app's Dock icon
 (`NSApp.requestUserAttention_(NSCriticalRequest)`) in addition to the
 sound and window-raise. Needs PyObjC (`pyobjc-framework-Cocoa`). Split out
-of spec #1 in round-1 review as "not important".
+of the guided-print-dialog spec in round-1 review as "not important".

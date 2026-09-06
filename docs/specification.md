@@ -6,8 +6,10 @@
 
 > This spec was approved and implemented as described below. All review
 > questions from revision 0.1 are resolved; see [§11](#11-resolved-decisions).
-> Treat this document as the design record — if the implementation and this
-> spec ever disagree, update whichever one is wrong.
+> Treat this document as the design record for the **core two-pass
+> engine**, which is unchanged. Later workflow / UI changes are **not**
+> merged into the body — each is a separate feature spec, indexed with a
+> one-paragraph delta in [Appendix C](#appendix-c-changes-since-revision-02).
 
 ---
 
@@ -79,9 +81,15 @@ automates.
 
 - Select a printer (from the system/CUPS list).
 - Select one source PDF.
+  > ⚠ **Changed** — [Appendix C.2](#c2-set-list-printing): an ordered
+  > *list* of one or more PDFs.
 - Choose a cover-strip mode: **none / always / smart** (default **smart**).
+  > ⚠ **Moved** — [Appendix C.3](#c3-live-strip-cover-control-on-the-preview-dialog):
+  > the control is on the preview dialog, not the main window.
 - Show a brief **plan preview** including a first-page (post-strip)
   thumbnail ([§5.3](#53-plan-preview)).
+  > ⚠ **Moved** — [Appendix C.2](#c2-set-list-printing): the preview is a
+  > separate dialog with one thumbnail per file.
 - Run the guided two-pass flow with a flip prompt in the middle.
 - Track each pass to completion (reusing `musicprinter.printing`).
 - Cancel a pass in progress.
@@ -112,17 +120,33 @@ automates.
 
 A single non-resizable window, top to bottom:
 
+> ⚠ **Largely superseded.** [Appendix C.1](#c1-guided-print-dialog),
+> [C.2](#c2-set-list-printing), [C.3](#c3-live-strip-cover-control-on-the-preview-dialog).
+> Per-item notes below.
+
 1. **Printer:** dropdown, default = system default printer, shows
    "(default)" and warns inline if the selected printer is paused.
 2. **Sheet music (PDF):** "Choose PDF…" button + path label.
+   > ⚠ **Changed** — [C.2](#c2-set-list-printing): a scrollable,
+   > drag-to-reorder file list + **Add PDFs…** multi-select.
 3. **Strip Cover Sheet:** dropdown — `Always Remove First Page` /
    `Don't Remove` / `Smart Strip (remove if detected)`; default **Smart**.
+   > ⚠ **Moved** — [C.3](#c3-live-strip-cover-control-on-the-preview-dialog):
+   > now on the preview dialog, re-planning live on change.
 4. **Plan preview:** a read-only panel with a first-page thumbnail, updated
    whenever the file or mode changes ([§5.3](#53-plan-preview)).
+   > ⚠ **Moved** — [C.2](#c2-set-list-printing): its own **Preview**
+   > dialog, one thumbnail per file, opened by a button.
 5. **Start** button (enabled only when printer + valid PDF are set).
+   > ⚠ **Moved** — [C.2](#c2-set-list-printing): **Start** is in the
+   > preview dialog.
 6. **Status line** + indeterminate progress bar (reused from the current
    app).
+   > ⚠ **Moved** — [C.1](#c1-guided-print-dialog): into the modal
+   > `RunDialog`; nothing mirrored on the main window.
 7. **Cancel** button (enabled only while a pass is running).
+   > ⚠ **Moved** — [C.1](#c1-guided-print-dialog): Cancel lives in the
+   > `RunDialog`.
 
 ### 5.2 Cover-sheet control
 
@@ -133,6 +157,13 @@ A single non-resizable window, top to bottom:
 | `smart` (default) | Run cover detectors. Remove page 1 only if a detector matches at or above the confidence threshold. Otherwise keep all pages. Signals and the decision table are in [cover_signals.md](cover_signals.md). |
 
 ### 5.3 Plan preview
+
+> ⚠ **Superseded** — [Appendix C.2](#c2-set-list-printing) (moved to its
+> own dialog, one block per file) and
+> [C.3](#c3-live-strip-cover-control-on-the-preview-dialog) (the strip
+> control sits here and re-plans live). The shipped preview shows a
+> `cover removed` chip and `N pages · M sheets` per file plus a whole-set
+> total — no confidence score, no per-mode sentence.
 
 Deliberately brief. Four things plus a thumbnail — **no per-pass page
 lists**:
@@ -165,6 +196,11 @@ Example rendering:
 
 ### 5.4 Guided flow (state machine)
 
+> ⚠ **Presentation only** — [Appendix C.1](#c1-guided-print-dialog):
+> `READY → PRINTING_PASS1 → WAIT_FOR_FLIP → PRINTING_PASS2 → DONE` is
+> unchanged; it is now rendered by the modal `RunDialog` instead of inline
+> widgets. [C.2](#c2-set-list-printing): "PDF" reads as "the list".
+
 ```
 IDLE ──select printer + PDF──▶ READY
 READY ──Start──▶ PRINTING_PASS1
@@ -193,6 +229,11 @@ Screen text:
 - **DONE:** "✅ Done — double-sided copy printed." + **"Print another"**.
 
 ### 5.5 Cancel & error handling
+
+> ⚠ **Surface changed** — [Appendix C.1](#c1-guided-print-dialog): these
+> semantics are intact but the dialogs are phases of the modal
+> `RunDialog`. "Explain in the preview area" for a bad PDF now means the
+> main-window file-list row + status line ([C.2](#c2-set-list-printing)).
 
 | Situation | Behaviour |
 |---|---|
@@ -534,3 +575,61 @@ tests/
 ```
 
 The scaffold's `core.py` is deleted.
+
+---
+
+## Appendix C: changes since revision 0.2
+
+This spec (revision 0.2) is the design record for the core two-pass
+engine, and that engine is unchanged. Everything below is a **presentation
+/ workflow** change delivered by a later, self-contained feature spec.
+Those specs are the authority for their area; this appendix is the index
+of what they moved. The spec body above is **not** rewritten — where it
+disagrees with an entry here, the entry wins.
+
+### C.1 Guided print dialog
+
+Spec: [spec_guided_print_dialog.md](spec_guided_print_dialog.md) · built 2026-09-01.
+
+- The run — progress, the flip prompt, Cancel — moved **out of the main
+  window** into a truly-modal `RunDialog` (`musicprinter/rundialog.py`)
+  that opens on Start and owns the run until a terminal state.
+- Supersedes §5.1 items 6 (status line + progress bar) and 7 (Cancel
+  button) as *main-window* elements, and the inline presentation implied
+  by §5.4 / §5.5. **The state machine in §5.4 is unchanged** — the dialog
+  only renders whichever state the app is already in.
+- Adds an always-on flip cue (macOS "Ping", `afplay`, `Tk.bell()`
+  fallback).
+
+### C.2 Set-list printing
+
+Spec: [spec_batch_printing.md](spec_batch_printing.md) · built 2026-09-01.
+
+- The app is **multi-file-native**. The main window holds an ordered
+  **list** of PDFs; a list of one is the everyday case. Supersedes §4.1
+  "Select one source PDF" and §5.1 item 2 ("Choose PDF…" + path label) —
+  now a scrollable, drag-to-reorder file-list widget plus an "Add PDFs…"
+  multi-select.
+- The **plan preview** (§5.3) is no longer a main-window panel. It is its
+  own `PreviewDialog` (`Toplevel`), opened by a **Preview** button, with
+  one thumbnail + `cover removed` chip + `N pages · M sheets` per file and
+  a whole-set sheet total. **Start** now lives in that dialog and hands
+  off to the run dialog (C.1).
+- Page planning generalised: `duplex.plan_set([effective_lengths])` pads
+  every file but the last to even so each file starts on a sheet front,
+  then applies the ordinary even/odd split to the concatenation.
+  `jobs.build_plan` / `jobs.build_pass_pdf` replace the single-file path.
+  A list of one reduces exactly to §7.2.
+
+### C.3 Live strip-cover control on the preview dialog
+
+Spec: [spec_preview_strip_control.md](spec_preview_strip_control.md) · built 2026-09-05.
+
+- The **Strip Cover Sheet** dropdown moved off the main window (§5.1
+  item 3) into the **Preview dialog** (C.2), above the thumbnails.
+- Changing it re-runs `jobs.build_plan` on a worker thread and updates the
+  dialog's chips, per-file page/sheet counts, the sheet total, and the
+  affected thumbnails **in place** — no reopen.
+- Still a single global choice; the §5.2 behaviour table
+  (`none` / `always` / `smart`) is unchanged. `strip_mode` is still
+  persisted (§4.1, §8) — now written when the dialog's control changes.

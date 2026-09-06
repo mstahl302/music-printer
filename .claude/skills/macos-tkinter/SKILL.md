@@ -104,6 +104,14 @@ pass them as plain args to the worker, and push results back onto
   arrives as `e.x_root`/`e.y_root`); wheel delta is `delta=`; a synthetic
   `serial` does not reliably increment, so don't build throttles on `%#` in
   tests.
+- **Synthetic `<KeyPress>` needs keyboard focus on Tk 9 aqua.** A newly
+  created `tk.Tk()` in a headless run does not take focus, so
+  `app.event_generate("<KeyPress-Down>")` is silently dropped and the
+  binding never fires (`<MouseWheel>` / `<TouchpadScroll>` do *not* need
+  focus). Call `app.focus_force(); app.update()` before generating any key
+  event. This is environment-sensitive — the same test can pass when the
+  window happens to hold focus and fail otherwise
+  (`test_scroll.py::test_arrow_key_scrolls_only_while_pointer_is_over_the_list`).
 - Drive the state machine with a `FakePrinting` mock past `build_pass_pdf`
   and a `_pump(app, until)` helper. **Never let a headless run reach the real
   `printing` module** — it submits real CUPS jobs.

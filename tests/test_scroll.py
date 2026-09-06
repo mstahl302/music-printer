@@ -83,6 +83,10 @@ def test_arrow_key_scrolls_only_while_pointer_is_over_the_list(tmp_path):
     try:
         cv = app.filelist._canvas
         mx, my = _over(cv)
+        # Tk 9 aqua drops a synthetic <KeyPress> unless the window holds the
+        # keyboard focus (wheel / trackpad events don't need it).
+        app.focus_force()
+        app.update()
         app.event_generate("<KeyPress-Down>", rootx=mx, rooty=my)
         app.update()
         moved = cv.yview()[0]

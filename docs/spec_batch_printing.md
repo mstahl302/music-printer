@@ -109,6 +109,9 @@ The main window carries the file list directly — no separate window, no
 mode.
 
 - **Strip Cover Sheet** dropdown (global) and **Printer** dropdown, as now.
+  > ⚠ **Changed** — [Appendix A.1](#a1-strip-control-moved-to-the-preview-dialog):
+  > only **Printer** stays on the main window; the strip dropdown moved to
+  > the preview dialog.
 - **The list.** A bordered box with **alternating white / light-grey
   rows** so it reads as a list even when empty (empty rows carry an "Add
   PDFs to build your set…" hint). Each file row:
@@ -132,6 +135,11 @@ mode.
   removed.
 
 ### 5.2 The preview dialog
+
+> ⚠ **Extended** — [Appendix A.1](#a1-strip-control-moved-to-the-preview-dialog):
+> this dialog also carries the **Strip Cover Sheet** control (header row,
+> above the thumbnails) and re-plans everything below it live when the
+> mode changes.
 
 A separate `Toplevel`, opened by **Preview**. Scrollable. **One block per
 file — a first-page thumbnail (post-strip) for every file in the list**;
@@ -170,6 +178,10 @@ set-list starts fresh. A **cancelled or failed** run keeps the set so it
 can be adjusted and retried.
 
 ## 6. Visual mockups
+
+> ⚠ **Out of date** — [Appendix A.1](#a1-strip-control-moved-to-the-preview-dialog):
+> the `Strip Cover Sheet:` row belongs in the *Preview dialog* sketch, not
+> the main-window one.
 
 See the companion artifact. Text sketch of the main-window list:
 
@@ -240,3 +252,23 @@ Nothing open.
 > Note: comment 9a57fb6d referenced an attached image of the intended
 > file-list look. This spec is written from the text description; if the
 > image shows specifics to match, point me at it.
+
+---
+
+## Appendix — changes since this spec shipped
+
+The spec body above is left as shipped. Later changes to this area land as
+their own spec and are indexed here.
+
+### A.1 Strip control moved to the preview dialog — [spec_preview_strip_control.md](spec_preview_strip_control.md) (built 2026-09-05)
+
+- The **Strip Cover Sheet** dropdown described in §5.1 ("as now", on the
+  main window) and drawn on the main-window sketch in §6 has **moved into
+  the preview dialog** (§5.2), as a header row above the thumbnails.
+- Changing it now re-plans on a worker thread and updates the preview's
+  `cover removed` chips, per-file `N pages · M sheets` lines, the "requires
+  X sheets" total, and the affected thumbnails **in place** — no reopen.
+- Unchanged: strip is still **one global choice** for the whole list
+  (§3); on a clean finish the set clears and the printer + strip choice
+  are kept (§5.3). Per-file override is still #12, still out of scope —
+  this was written as its first step.

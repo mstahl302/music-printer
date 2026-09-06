@@ -86,12 +86,12 @@ def test_single_file_two_pass(tmp_path, monkeypatch, no_dialogs):
     assert _passes(fake) == ["even", "odd"]
     assert app.dialog._primary_btn.cget("text") == "Close"
 
-    printer_before, cover_before = app.printer.get(), app.cover_label.get()
+    printer_before, mode_before = app.printer.get(), app.cfg["strip_mode"]
     app._close_dialog()                         # click "Close" on the done dialog
     assert app.filelist.files == []             # set cleared, ready for the next run
     assert app.setplan is None
     assert app.state == main.READY
-    assert (app.printer.get(), app.cover_label.get()) == (printer_before, cover_before)
+    assert (app.printer.get(), app.cfg["strip_mode"]) == (printer_before, mode_before)
     app._on_close()
 
 
