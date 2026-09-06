@@ -159,11 +159,13 @@ A single non-resizable window, top to bottom:
 ### 5.3 Plan preview
 
 > ⚠ **Superseded** — [Appendix C.2](#c2-set-list-printing) (moved to its
-> own dialog, one block per file) and
+> own dialog, one block per file),
 > [C.3](#c3-live-strip-cover-control-on-the-preview-dialog) (the strip
-> control sits here and re-plans live). The shipped preview shows a
-> `cover removed` chip and `N pages · M sheets` per file plus a whole-set
-> total — no confidence score, no per-mode sentence.
+> control sits here and re-plans live), and
+> [C.4](#c4-resizable-preview-dialog) (the dialog is drag-resizable). The
+> shipped preview shows a `cover removed` chip and `N pages · M sheets`
+> per file plus a whole-set total — no confidence score, no per-mode
+> sentence.
 
 Deliberately brief. Four things plus a thumbnail — **no per-pass page
 lists**:
@@ -633,3 +635,13 @@ Spec: [spec_preview_strip_control.md](spec_preview_strip_control.md) · built 20
 - Still a single global choice; the §5.2 behaviour table
   (`none` / `always` / `smart`) is unchanged. `strip_mode` is still
   persisted (§4.1, §8) — now written when the dialog's control changes.
+
+### C.4 Resizable preview dialog
+
+Spec: [spec_resizable_preview.md](spec_resizable_preview.md) · built 2026-09-06.
+
+- The **Preview dialog** (C.2) is now drag-resizable — the thumbnail
+  canvas and its inner frame grow with the window, so more than one block
+  is visible without scrolling. The main window and `RunDialog` (C.1)
+  remain fixed-size; this was considered and explicitly dropped for the
+  main window.

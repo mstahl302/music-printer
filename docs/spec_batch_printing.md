@@ -139,7 +139,8 @@ mode.
 > ⚠ **Extended** — [Appendix A.1](#a1-strip-control-moved-to-the-preview-dialog):
 > this dialog also carries the **Strip Cover Sheet** control (header row,
 > above the thumbnails) and re-plans everything below it live when the
-> mode changes.
+> mode changes. [A.2](#a2-preview-dialog-is-resizable): the dialog is also
+> drag-resizable now — the fixed size below is only its initial size.
 
 A separate `Toplevel`, opened by **Preview**. Scrollable. **One block per
 file — a first-page thumbnail (post-strip) for every file in the list**;
@@ -260,7 +261,9 @@ Nothing open.
 The spec body above is left as shipped. Later changes to this area land as
 their own spec and are indexed here.
 
-### A.1 Strip control moved to the preview dialog — [spec_preview_strip_control.md](spec_preview_strip_control.md) (built 2026-09-05)
+### A.1 Strip control moved to the preview dialog
+
+Spec: [spec_preview_strip_control.md](spec_preview_strip_control.md) · built 2026-09-05.
 
 - The **Strip Cover Sheet** dropdown described in §5.1 ("as now", on the
   main window) and drawn on the main-window sketch in §6 has **moved into
@@ -272,3 +275,13 @@ their own spec and are indexed here.
   (§3); on a clean finish the set clears and the printer + strip choice
   are kept (§5.3). Per-file override is still #12, still out of scope —
   this was written as its first step.
+
+### A.2 Preview dialog is resizable
+
+Spec: [spec_resizable_preview.md](spec_resizable_preview.md) · built 2026-09-06.
+
+- The preview dialog (§5.2) is now drag-resizable, so more than one block
+  is visible without scrolling. The §6 mockup and the fixed
+  `width=460`/height figures in the build outline (§7) are its **initial**
+  size only.
+- The main window is unaffected — resizing it was considered and dropped.

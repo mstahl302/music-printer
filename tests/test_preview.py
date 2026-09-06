@@ -106,6 +106,39 @@ def test_rapid_mode_change_keeps_only_the_last(tmp_path):
     root.destroy()
 
 
+def test_preview_dialog_is_resizable_and_shows_more_when_grown(tmp_path):
+    root = main.tk.Tk()
+    root.update()
+    files = [_write(tmp_path / f"s{i}.pdf", cover=False, music_pages=4)
+             for i in range(8)]
+    setplan = jobs.build_plan(files, "none", threshold=0.70)
+
+    dlg = main.PreviewDialog(root, setplan=setplan, threshold=0.70,
+                             on_start=lambda _p: None)
+    root.update()
+
+    assert tuple(dlg.resizable()) == (1, 1)      # was (False, False)
+
+    frm = dlg.winfo_children()[0]
+    cv = next(w for w in frm.winfo_children() if isinstance(w, main.tk.Canvas))
+    winid = cv.find_all()[0]                     # the one window item (body)
+
+    before_span = cv.yview()
+    before_w = cv.winfo_width()
+
+    dlg.geometry("700x900")
+    dlg.update()
+
+    after_span = cv.yview()
+    # taller: a bigger fraction of the (fixed-height) block list is visible
+    assert (after_span[1] - after_span[0]) > (before_span[1] - before_span[0])
+    # wider: the inner frame follows the canvas instead of leaving a gap
+    assert cv.winfo_width() > before_w
+    assert int(cv.itemcget(winid, "width")) == cv.winfo_width()
+
+    root.destroy()
+
+
 def _all_labels(widget):
     out = []
     for child in widget.winfo_children():

@@ -329,7 +329,8 @@ class PreviewDialog(tk.Toplevel):
                  on_mode_change=None, on_close=None) -> None:
         super().__init__(parent)
         self.title("Preview")
-        self.resizable(False, False)
+        self.resizable(True, True)
+        self.minsize(420, 320)
         self.transient(parent)
         self._setplan = setplan
         self._threshold = threshold
@@ -349,8 +350,12 @@ class PreviewDialog(tk.Toplevel):
         self._closing = False
         self._afters: list[str] = []
 
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
         frm = ttk.Frame(self, padding=16)
         frm.grid(sticky="nsew")
+        frm.rowconfigure(1, weight=1)          # the thumbnail canvas grows
+        frm.columnconfigure(0, weight=1)
 
         header = ttk.Frame(frm)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
@@ -366,12 +371,18 @@ class PreviewDialog(tk.Toplevel):
                            height=min(430, 96 * max(1, setplan.n_files) + 8))
         sb = ttk.Scrollbar(frm, orient="vertical", command=canvas.yview)
         body = ttk.Frame(canvas)
-        canvas.create_window((0, 0), window=body, anchor="nw")
+        body.columnconfigure(0, weight=1)
+        winid = canvas.create_window((0, 0), window=body, anchor="nw")
         canvas.configure(yscrollcommand=sb.set)
         canvas.grid(row=1, column=0, sticky="nsew")
         sb.grid(row=1, column=1, sticky="ns")
         body.bind("<Configure>",
                   lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        # Growing the dialog widens the canvas; follow with the inner frame
+        # so blocks stretch instead of leaving a fixed-width column of dead
+        # space (same pattern as FileList's canvas — see bind_region_scroll).
+        canvas.bind("<Configure>",
+                   lambda e: canvas.itemconfigure(winid, width=e.width), add="+")
         try:
             canvas.configure(bg=ttk.Style().lookup("TFrame", "background") or None)
         except tk.TclError:
