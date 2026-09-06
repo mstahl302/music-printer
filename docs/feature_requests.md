@@ -12,8 +12,7 @@ is not rewritten — it gets a short **appendix** noting what changed and
 pointing at the new spec.
 
 > **Note on scope:** several items below (duplex mode, back-side rotation,
-> full per-printer page-order handling, colour output, media-size
-> normalisation) revisit decisions
+> full per-printer page-order handling, color output) revisit decisions
 > [specification.md §4.2](specification.md#42-out-of-scope--non-goals-v1)
 > and [§7.4](specification.md#74-printer-assumptions) that were originally
 > fixed. Page order has already been reopened (it's a settings-file value
@@ -25,35 +24,37 @@ pointing at the new spec.
 
 ## Top priority
 
-**#18, #19, and #20 are the current top of the queue** — #20 is spec'd,
-#18 and #19 are not.
+**#18, #19, and #20 are the current top of the queue** — all three are
+spec'd now (#20: [spec_pdf_file_association.md](spec_pdf_file_association.md);
+#18 and #19: [spec_printer_options.md](spec_printer_options.md)). None
+are built.
 
 > This file lists only work that has **not** been done — a finished item
 > is deleted, not marked done. Numbers are stable IDs, so a gap just means
 > something shipped; what shipped is recorded in the spec files under
 > [docs/](.) and their appendices, not here.
 
-### 18. Print in colour
+### 18. Print in color
 
-Send both passes as **colour** jobs (`lp -o print-color-mode=color` /
-`ColorModel=RGB`), not whatever the driver defaults to. Ideally a small
-**Colour / Black & white** control on the main window next to Printer,
-defaulting to colour, with the choice saved to the settings file like the
-printer and strip mode.
+> 📄 **Spec:** [spec_printer_options.md](spec_printer_options.md) — the
+> **Color / Black & white** printer option. Not yet built.
 
-**Value:** engraved sheet music increasingly ships with colour — coloured
+Send both passes as **color** jobs (`lp -o print-color-mode=color`), not
+whatever the driver defaults to, with the choice saved and bound to the
+printer.
+
+**Value:** engraved sheet music increasingly ships with color — color
 chord diagrams, highlighted repeats and endings, capo/section labels,
-publisher accents. A greyscale job flattens those into near-invisible
-mid-greys. The two-pass workflow also makes a wrong default expensive:
-you don't notice until the whole flipped stack is on the tray. Colour by
+publisher accents. A grayscale job flattens those into near-invisible
+mid-grays. The two-pass workflow also makes a wrong default expensive:
+you don't notice until the whole flipped stack is on the tray. Color by
 default, switch to B&W to save ink.
 
-### 19. Normalise every page to Letter so the printer never pauses
+### 19. Fit every page to the tray size so the printer never pauses
 
-Rescale / fit every page of both mega-PDFs to **US Letter** (612×792 pt) —
-rewrite the MediaBox, scale the content to fit with even margins — and
-submit with `-o media=Letter -o fit-to-page` so CUPS and the printer
-never see a size they have to negotiate.
+> 📄 **Spec:** [spec_printer_options.md](spec_printer_options.md) — the
+> **Resize pages to fit the sheet** printer option (`lp -o fit-to-page`,
+> default on). Not yet built.
 
 Today a PDF that's A4, or Letter-with-a-hair-off, or any non-tray size
 makes the printer **stop and wait** — "load A4 in tray 1", or a driver
@@ -64,14 +65,7 @@ stores mix Letter and A4 freely, and a set-list can now contain both in
 one job.
 
 **Value:** the run goes start-to-finish without the printer pausing for
-input; page size is consistent across a mixed set-list; margins and
-scaling are predictable. Pairs naturally with #8 (export) and the
-paper-count math, and is close to a prerequisite for unattended runs.
-
-> Touches [`pdfio.build_pages`](../musicprinter/pdfio.py) (the mega-PDF
-> builder) and [`printing.submit`](../musicprinter/printing.py); when
-> actioned, [specification.md §7.4](specification.md#74-printer-assumptions)
-> needs a matching revision.
+input; scaling is predictable across a mixed set-list.
 
 ### 20. Register as a PDF handler ("Open With" association)
 
@@ -158,7 +152,7 @@ down.
 
 A first-run wizard that walks a new user through printer setup instead of
 asking them to know abstract facts about it: pick a printer, print a small
-labelled test sheet (e.g. 4 numbered pages), and answer plain questions
+labeled test sheet (e.g. 4 numbered pages), and answer plain questions
 about what came out ("Is page 2 on top or on the bottom of the stack?").
 From the answers, derive #4–#6 automatically. Optionally, have the user
 physically practice the flip once, with the app confirming the result

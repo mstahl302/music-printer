@@ -41,7 +41,7 @@ automates.
   `lp` does not). Controlled by `reverse_page_order` in the settings
   file, default on. See [Appendix A](#appendix-a-page-ordering-rationale).
   *(History: this was originally assumed to be the printer's own default
-  behaviour and left non-configurable; a real print test showed raw `lp`
+  behavior and left non-configurable; a real print test showed raw `lp`
   delivers front-to-back, so the app now sets `outputorder` explicitly.)*
 - **Short-edge flip (fixed assumption).** The user flips the stack about
   the short edge and re-inserts it. No back-side rotation is applied — the
@@ -150,7 +150,7 @@ A single non-resizable window, top to bottom:
 
 ### 5.2 Cover-sheet control
 
-| Mode | Behaviour |
+| Mode | Behavior |
 |---|---|
 | `none` | Never remove anything. Effective pages = source pages. |
 | `always` | Remove exactly page 1. If the source has only 1 page, do nothing and note it in the preview. |
@@ -237,7 +237,7 @@ Screen text:
 > `RunDialog`. "Explain in the preview area" for a bad PDF now means the
 > main-window file-list row + status line ([C.2](#c2-set-list-printing)).
 
-| Situation | Behaviour |
+| Situation | Behavior |
 |---|---|
 | Cancel during Pass 1 | Cancel the CUPS job, return to READY. No flip prompt. |
 | Cancel during WAIT_FOR_FLIP | Return to READY. Dialog: "Pass 1 sheets are already printed; discard them or restart the file." |
@@ -470,10 +470,10 @@ Per [cover_signals.md §6](cover_signals.md):
 - Hand-label cover / no-cover.
 - Tune the Musicnotes boilerplate phrases and `confidence_threshold` for
   **zero false strips** and maximum true strips.
-- Freeze a small labelled subset as `tests/fixtures/` with expected
+- Freeze a small labeled subset as `tests/fixtures/` with expected
   `CoverMatch` output.
 
-An initial 12-file sample is already analysed in cover_signals.md §2–§3;
+An initial 12-file sample is already analyzed in cover_signals.md §2–§3;
 the numbers there must be re-confirmed on the full corpus before
 implementation is considered complete.
 
@@ -632,7 +632,7 @@ Spec: [spec_preview_strip_control.md](spec_preview_strip_control.md) · built 20
 - Changing it re-runs `jobs.build_plan` on a worker thread and updates the
   dialog's chips, per-file page/sheet counts, the sheet total, and the
   affected thumbnails **in place** — no reopen.
-- Still a single global choice; the §5.2 behaviour table
+- Still a single global choice; the §5.2 behavior table
   (`none` / `always` / `smart`) is unchanged. `strip_mode` is still
   persisted (§4.1, §8) — now written when the dialog's control changes.
 

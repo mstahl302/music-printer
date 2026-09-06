@@ -112,7 +112,7 @@ mode.
   > ⚠ **Changed** — [Appendix A.1](#a1-strip-control-moved-to-the-preview-dialog):
   > only **Printer** stays on the main window; the strip dropdown moved to
   > the preview dialog.
-- **The list.** A bordered box with **alternating white / light-grey
+- **The list.** A bordered box with **alternating white / light-gray
   rows** so it reads as a list even when empty (empty rows carry an "Add
   PDFs to build your set…" hint). Each file row:
   - a **drag handle** (grippy, `⠿`) on the left edge — drag a row up or
@@ -150,7 +150,7 @@ Each block: the thumbnail, the filename, and a one-line side comment:
 
 > `[cover removed]` · 5 pages · 3 sheets
 
-- `[cover removed]` is a small **coloured chip** (pink). It appears only
+- `[cover removed]` is a small **colored chip** (pink). It appears only
   when a cover was actually removed. **No confidence score, ever.**
 - When no cover was removed, the line is just `5 pages · 3 sheets`.
 

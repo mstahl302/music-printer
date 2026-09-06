@@ -236,7 +236,7 @@ with Music Printer"** subsection to [../README.md](../README.md) and/or
 
 ## 7. Edge cases
 
-| Case | Behaviour |
+| Case | Behavior |
 |---|---|
 | **Non-PDF passed** (someone selects a mix and Opens With) | Filtered out in `_open_documents` by extension + `is_file()`. If nothing survives, do nothing (no error dialog). |
 | **File is missing / unreadable by the time we look** | `Path(p).is_file()` filter drops it. A file that opens but is encrypted or 0-page is handled downstream by the existing plan worker, which flags it **⚠ Can't open this PDF** in the row and blocks Preview until removed (spec_batch_printing §5.1). No new handling. |
@@ -257,7 +257,7 @@ with Music Printer"** subsection to [../README.md](../README.md) and/or
 3. **Open With during an active run** — buffer + `bell()` + flush on
    READY (proposed), vs. silently append, vs. a small non-modal toast.
 4. **Warm open = append vs. replace** — proposed **append** (extends the
-   set). Confirm that's the wanted behaviour and not "replace the list
+   set). Confirm that's the wanted behavior and not "replace the list
    with what I just opened".
 5. **Raise / focus on warm open** — `deiconify` + `lift` + `focus_force`
    proposed so the window comes forward when you Open With from Finder.

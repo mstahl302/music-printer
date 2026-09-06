@@ -147,7 +147,7 @@ not 6.
 ### 3.5 Persistence
 
 `strip_mode` stays in the settings file and is still written **the moment
-the control changes** — same behaviour as the current main-window menu,
+the control changes** — same behavior as the current main-window menu,
 just from the dialog. `PreviewDialog` takes an `on_mode_change(mode)`
 callback; `App` wires it to
 `self.cfg["strip_mode"] = mode; settings.save(self.cfg)`.
@@ -166,7 +166,7 @@ an `on_close` callback. `App` passes a handler that calls
 the (possibly changed) mode. The Start path already installs the fresh
 plan via `on_start`, so it does not also need `on_close`.
 
-## 4. Behaviour details
+## 4. Behavior details
 
 - **Modality unchanged.** The dialog keeps its `transient` + `grab_set`.
   The replan worker is a daemon thread; results arrive through the queue

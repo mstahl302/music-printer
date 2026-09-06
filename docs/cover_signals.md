@@ -49,7 +49,7 @@ small ornament image.
 ## 2. Sample corpus (2026-09-01)
 
 12 files pulled from Google Drive `/Music/Vocal/Songs/*` and nearby
-folders. All US Letter (612×792 pt). Hand-labelled:
+folders. All US Letter (612×792 pt). Hand-labeled:
 
 | File | Pages | Page 1 | Producer / origin |
 |---|---|---|---|
@@ -180,7 +180,7 @@ to `REGISTRY`. No changes to page planning or printing.
 3. Tune `MUSICNOTES_COVER_PHRASES` and `confidence_threshold` for **zero
    false strips** (a wrongly removed first page of music is the
    unacceptable error) and maximum true strips.
-4. Freeze a small labelled subset as `tests/fixtures/` with expected
+4. Freeze a small labeled subset as `tests/fixtures/` with expected
    `CoverMatch` output.
 
 Numbers in §3 are from a 12-file sample. This validation plan has **not**

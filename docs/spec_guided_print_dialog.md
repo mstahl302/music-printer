@@ -36,7 +36,7 @@ Today ([main.py](../main.py)):
 
 A `Toplevel` window, centered over the main window, `transient` +
 `grab_set` — **truly modal**: while a run is in progress the main window
-receives no input at all (§4). Not resizable, no minimise button. It owns
+receives no input at all (§4). Not resizable, no minimize button. It owns
 the run from Start to a terminal state and is the only surface — there is
 no mirrored status in the main window.
 
@@ -60,7 +60,7 @@ dismisses the dialog. The dialog never auto-closes.
 | Printing pass 2 | "Printing — pass 2 of 2" | indeterminate bar · "Odd pages · job `NAME-456`" | Cancel print |
 | Done | "Done ✓" | "Double-sided copy printed." | **Close** |
 | Job cancelled | "Job cancelled" | pass-1 / flip: (nothing more). pass-2: "Some sheets are printed on one side only, and there may be back-printed sheets still in the printer's feed tray — pull those out before the next job." | **Close** |
-| Couldn't finish | "Couldn't finish" (alert colour) | the printer/CUPS error | **Close** |
+| Couldn't finish | "Couldn't finish" (alert color) | the printer/CUPS error | **Close** |
 
 **Close** at any terminal state just dismisses the dialog window and
 returns to the main window (READY, or DONE where its own "Print another"
@@ -80,13 +80,13 @@ On entering the **Flip** phase:
    dependency); fall back to `Tk.bell()` if `afplay` won't run.
 2. **Raise.** `dialog.lift()`, briefly set `-topmost`, `focus_force()` so
    the dialog comes forward if it was buried.
-3. **Visual.** Heading in the amber alert colour, the flip diagram, and
+3. **Visual.** Heading in the amber alert color, the flip diagram, and
    the primary button rendered large and filled.
 
 Dock-icon bounce is out of scope for this spec — tracked as an idea in
 [feature_requests.md](feature_requests.md).
 
-### 3.3 Buttons and colour
+### 3.3 Buttons and color
 
 - **Primary** — flat, filled, white text, bottom-right, bound to
   `<Return>`. **Green** *Continue — print the back side* at the flip;
@@ -98,8 +98,8 @@ Dock-icon bounce is out of scope for this spec — tracked as an idea in
   Continue (at the flip) and Cancel print. Close appears only once the
   run has reached a terminal state.
 - Buttons come from `musicprinter/widgets.py`. `tk.Button` on macOS aqua
-  ignores `background` while enabled (shows grey), so `widgets.Button` is
-  a `tk.Label` with mouse bindings — `highlightthickness=0` (the grey
+  ignores `background` while enabled (shows gray), so `widgets.Button` is
+  a `tk.Label` with mouse bindings — `highlightthickness=0` (the gray
   focus border was the culprit) and no `configure` override (call
   `set_enabled(bool)`, not `configure(state=…)`). Green `#2f8f4e`, red
   `#c0392b`, blue `#2b5fb0`; disabled blends 55 % toward white. **The
@@ -118,7 +118,7 @@ unchanged; the dialog just renders whichever state the app is in.
 
 - **Truly modal.** The dialog takes a `grab_set`. While a run is in
   progress the main window **cannot be used at all** — not merely
-  greyed-out, it receives no clicks or keystrokes. Nothing in the main
+  grayed-out, it receives no clicks or keystrokes. Nothing in the main
   window is relevant mid-run, and there is no status line mirrored there.
 - **Cancel** — semantics from
   [specification.md §5.5](specification.md#55-cancel--error-handling):
@@ -209,7 +209,7 @@ Resolved:
   dismisses the dialog.
 - **Flip diagram** — a *print → flip → print* row: printer, arrow, a page
   encircled by two curved arrows, arrow, printer.
-- **Button colour** (post-build polish) — green Continue, red Cancel,
+- **Button color** (post-build polish) — green Continue, red Cancel,
   blue Close; flat filled `tk.Button`s. Progress bar slowed to ~55 ms/step.
 
 Nothing open.
