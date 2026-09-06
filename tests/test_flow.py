@@ -259,6 +259,27 @@ def test_apply_persists_bound_to_printer_and_close_does_not(tmp_path, monkeypatc
     app._on_close()
 
 
+def test_duplicates_are_independent_entries(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    a = _write(tmp_path / "a.pdf", cover=False, music_pages=4)
+    b = _write(tmp_path / "b.pdf", cover=False, music_pages=2)
+    app = _app_with(monkeypatch, fake, [a, a, b, a])        # 'a' three times
+    assert app.filelist.files == [a, a, b, a]
+    assert app.setplan.n_files == 4                         # planned as four docs
+
+    app.filelist._remove(1)                                 # the middle 'a' only
+    assert app.filelist.files == [a, b, a]
+
+    fl = app.filelist                                       # reorder one copy, not all
+    fl._drag_from, fl._drop_target = 2, 0
+    fl._drag_drop(None)
+    assert fl.files == [a, a, b]
+
+    app.filelist._remove(0)
+    assert app.filelist.files == [a, b]
+    app._on_close()
+
+
 class _Dummy:
     def poll(self):
         return 0

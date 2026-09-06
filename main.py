@@ -255,14 +255,14 @@ class FileList(ttk.Frame):
             txt, fg = f"{e.n_effective} pages", "#888"
         tk.Label(row, text=txt, bg=stripe, fg=fg).grid(row=0, column=2, padx=8)
 
-        self._remove_icon(row, path, stripe).grid(row=0, column=3, padx=(6, 7))
+        self._remove_icon(row, i, stripe).grid(row=0, column=3, padx=(6, 7))
 
     # a red circle with a white X — drawn, not an image asset, so it stays
     # crisp and needs nothing bundled
     RM_D = 18                      # diameter; fits inline in a 32px row
     _RM_RED, _RM_RED_HOVER = "#f5333f", "#d92d38"
 
-    def _remove_icon(self, row, path: Path, stripe: str) -> tk.Canvas:
+    def _remove_icon(self, row, idx: int, stripe: str) -> tk.Canvas:
         d, m = self.RM_D, 6.5           # m = X inset from the disc edge
         c = tk.Canvas(row, width=d, height=d, bg=stripe, highlightthickness=0,
                       bd=0, cursor="pointinghand", takefocus=0)
@@ -271,15 +271,18 @@ class FileList(ttk.Frame):
         for x0, x1 in ((m, d - m), (d - m, m)):
             c.create_line(x0, m, x1, d - m, fill="white", width=2.2,
                           capstyle="round", disabledfill="#f4eaea")
-        c.bind("<Button-1>", lambda _e, p=path: self._remove(p))
+        # bind to the row's position, not the Path — the same file can appear
+        # more than once and removing by value would drop every copy
+        c.bind("<Button-1>", lambda _e, k=idx: self._remove(k))
         c.bind("<Enter>", lambda _e: c.itemconfigure(oval, fill=self._RM_RED_HOVER))
         c.bind("<Leave>", lambda _e: c.itemconfigure(oval, fill=self._RM_RED))
         return c
 
-    def _remove(self, path: Path) -> None:
-        self.files = [p for p in self.files if p != path]
-        self._render()
-        self._on_change()
+    def _remove(self, idx: int) -> None:
+        if 0 <= idx < len(self.files):
+            del self.files[idx]
+            self._render()
+            self._on_change()
 
     # ---- drag to reorder -------------------------------------
     def _real_rows(self):
