@@ -139,6 +139,40 @@ def test_preview_dialog_is_resizable_and_shows_more_when_grown(tmp_path):
     root.destroy()
 
 
+def test_preview_dialog_scroll_step_is_fixed_and_small(tmp_path):
+    root = main.tk.Tk()
+    root.update()
+    files = [_write(tmp_path / f"s{i}.pdf", cover=False, music_pages=4)
+             for i in range(10)]
+    setplan = jobs.build_plan(files, "none", threshold=0.70)
+
+    dlg = main.PreviewDialog(root, setplan=setplan, threshold=0.70,
+                             on_start=lambda _p: None)
+    root.update()
+
+    frm = dlg.winfo_children()[0]
+    cv = next(w for w in frm.winfo_children() if isinstance(w, main.tk.Canvas))
+    assert int(cv.cget("yscrollincrement")) == main.PreviewDialog.SCROLL_STEP_PX
+
+    total_h = cv.bbox("all")[3]
+    before = cv.yview()[0]
+    mx = cv.winfo_rootx() + cv.winfo_width() // 2
+    my = cv.winfo_rooty() + cv.winfo_height() // 2
+    cv.event_generate("<MouseWheel>", delta=-40, rootx=mx, rooty=my)
+    root.update()
+    moved_px = (cv.yview()[0] - before) * total_h
+    assert round(moved_px) == main.PreviewDialog.SCROLL_STEP_PX
+
+    # growing the dialog doesn't grow the step — Tk's unset-increment
+    # default is ~10% of the canvas's own height, which would otherwise
+    # balloon now that the dialog is resizable (spec_resizable_preview.md)
+    dlg.geometry("700x900")
+    dlg.update()
+    assert int(cv.cget("yscrollincrement")) == main.PreviewDialog.SCROLL_STEP_PX
+
+    root.destroy()
+
+
 def _all_labels(widget):
     out = []
     for child in widget.winfo_children():

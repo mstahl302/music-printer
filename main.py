@@ -325,6 +325,8 @@ class FileList(ttk.Frame):
 
 # ========================================================= preview dialog
 class PreviewDialog(tk.Toplevel):
+    SCROLL_STEP_PX = 10   # a fixed, small step — was ~43px, Tk's default at the dialog's usual height
+
     def __init__(self, parent, *, setplan: jobs.SetPlan, threshold: float, on_start,
                  on_mode_change=None, on_close=None) -> None:
         super().__init__(parent)
@@ -369,6 +371,12 @@ class PreviewDialog(tk.Toplevel):
 
         canvas = tk.Canvas(frm, highlightthickness=0, width=460,
                            height=min(430, 96 * max(1, setplan.n_files) + 8))
+        # Left unset, a canvas's scroll "unit" defaults to ~10% of its own
+        # height — which, now that the dialog is resizable, grows right
+        # along with it. Pin it instead, at about a third of that default
+        # at the dialog's usual size, so wheel/trackpad/arrow scrolling
+        # feels the same regardless of how large the window is dragged.
+        canvas.configure(yscrollincrement=self.SCROLL_STEP_PX)
         sb = ttk.Scrollbar(frm, orient="vertical", command=canvas.yview)
         body = ttk.Frame(canvas)
         body.columnconfigure(0, weight=1)
