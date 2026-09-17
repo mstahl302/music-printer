@@ -106,6 +106,39 @@ def test_rapid_mode_change_keeps_only_the_last(tmp_path):
     root.destroy()
 
 
+def test_preview_shows_the_target_printer(tmp_path):
+    root = main.tk.Tk()
+    root.update()
+    a = _write(tmp_path / "a.pdf", cover=False, music_pages=4)
+    setplan = jobs.build_plan([a], "smart", threshold=0.70)
+
+    dlg = main.PreviewDialog(root, setplan=setplan, threshold=0.70,
+                             on_start=lambda _p: None,
+                             printer_label="Xerox Phaser (Windermere)")
+    root.update()
+
+    texts = [w.cget("text") for w in _all_labels(dlg)]
+    assert any(t == "Printer: Xerox Phaser (Windermere)" for t in texts)
+
+    root.destroy()
+
+
+def test_preview_omits_the_printer_line_when_no_label_given(tmp_path):
+    root = main.tk.Tk()
+    root.update()
+    a = _write(tmp_path / "a.pdf", cover=False, music_pages=4)
+    setplan = jobs.build_plan([a], "smart", threshold=0.70)
+
+    dlg = main.PreviewDialog(root, setplan=setplan, threshold=0.70,
+                             on_start=lambda _p: None)
+    root.update()
+
+    texts = [w.cget("text") for w in _all_labels(dlg)]
+    assert not any(t.startswith("Printer:") for t in texts)
+
+    root.destroy()
+
+
 def test_preview_dialog_is_resizable_and_shows_more_when_grown(tmp_path):
     root = main.tk.Tk()
     root.update()

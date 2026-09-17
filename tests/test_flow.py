@@ -213,6 +213,22 @@ def test_submit_carries_the_printer_options(tmp_path, monkeypatch, no_dialogs):
     app._on_close()
 
 
+def test_preview_dialog_gets_the_friendly_printer_name(tmp_path, monkeypatch, no_dialogs):
+    fake = FakePrinting(["completed"])
+    fake.list_printers = lambda: [
+        Printer("XER_86E6B8__quirky_queue_name", True, "Xerox Phaser (Windermere)")]
+    pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)
+    app = _app_with(monkeypatch, fake, [pdf])
+    assert app.printer.get() == "XER_86E6B8__quirky_queue_name"
+
+    seen = {}
+    monkeypatch.setattr(main, "PreviewDialog",
+                        lambda *a, **kw: seen.update(kw) or None)
+    app._open_preview()
+    assert seen["printer_label"] == "Xerox Phaser (Windermere)"
+    app._on_close()
+
+
 def test_gear_disabled_during_a_run(tmp_path, monkeypatch, no_dialogs):
     fake = FakePrinting(["processing"])
     pdf = _write(tmp_path / "c.pdf", cover=False, music_pages=4)

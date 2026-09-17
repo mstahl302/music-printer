@@ -348,7 +348,7 @@ class PreviewDialog(tk.Toplevel):
     SCROLL_STEP_PX = 10   # a fixed, small step — was ~43px, Tk's default at the dialog's usual height
 
     def __init__(self, parent, *, setplan: jobs.SetPlan, threshold: float, on_start,
-                 on_mode_change=None, on_close=None) -> None:
+                 on_mode_change=None, on_close=None, printer_label: str = "") -> None:
         super().__init__(parent)
         self.title("Preview")
         self.resizable(True, True)
@@ -359,6 +359,7 @@ class PreviewDialog(tk.Toplevel):
         self._on_start = on_start
         self._on_mode_change = on_mode_change
         self._on_close = on_close
+        self._printer_label = printer_label
         self._files = [e.path for e in setplan.entries]
         self._mode = setplan.strip_mode
         self._replan_token = 0
@@ -438,12 +439,20 @@ class PreviewDialog(tk.Toplevel):
         bar.columnconfigure(0, weight=1)
         msg = ttk.Frame(bar)
         msg.grid(row=0, column=0, sticky="w")
+        msg_row = 0
+        if self._printer_label:
+            # Right beside the sheet count — the two facts a person needs
+            # before they walk to the printer: how much paper, and which
+            # printer to load it into.
+            ttk.Label(msg, text=f"Printer: {self._printer_label}",
+                      foreground="#888").grid(row=msg_row, column=0, sticky="w")
+            msg_row += 1
         self._sheets_var = tk.StringVar()
         self._hint_var = tk.StringVar(value="When you're ready, click Start.")
         ttk.Label(msg, textvariable=self._sheets_var,
-                  font=("TkDefaultFont", 13, "bold")).grid(row=0, column=0, sticky="w")
+                  font=("TkDefaultFont", 13, "bold")).grid(row=msg_row, column=0, sticky="w")
         ttk.Label(msg, textvariable=self._hint_var,
-                  foreground="#666").grid(row=1, column=0, sticky="w")
+                  foreground="#666").grid(row=msg_row + 1, column=0, sticky="w")
         self._start_btn = widgets.button(bar, "Start", widgets.BLUE, self._start, big=True)
         self._start_btn.grid(row=0, column=1)
 
@@ -894,12 +903,15 @@ class App(tk.Tk):
     def _refresh_options_summary(self) -> None:
         self.options_summary.set(printer_options.summary_line(self._printer_opts))
 
+    def _current_printer_label(self) -> str:
+        p = self._printers.get(self.printer.get())
+        return p.label if p else (self.printer.get() or "this printer")
+
     def _open_options(self) -> None:
         if self.state != READY:
             return
-        p = self._printers.get(self.printer.get())
-        label = p.label if p else (self.printer.get() or "this printer")
-        OptionsDialog(self, printer_label=label, values=dict(self._printer_opts),
+        OptionsDialog(self, printer_label=self._current_printer_label(),
+                      values=dict(self._printer_opts),
                       on_apply=self._apply_printer_options)
 
     def _apply_printer_options(self, values: dict) -> None:
@@ -976,7 +988,8 @@ class App(tk.Tk):
                       threshold=float(self.cfg["confidence_threshold"]),
                       on_start=self._start_run,
                       on_mode_change=self._persist_strip_mode,
-                      on_close=self._recompute)
+                      on_close=self._recompute,
+                      printer_label=self._current_printer_label())
 
     def _persist_strip_mode(self, mode: str) -> None:
         self.cfg["strip_mode"] = mode
