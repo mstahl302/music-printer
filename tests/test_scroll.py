@@ -62,6 +62,7 @@ def test_mousewheel_over_a_row_scrolls_the_list(tmp_path):
         app._on_close()
 
 
+@pytest.mark.skipif(main.tk.TkVersion < 9, reason="<TouchpadScroll> is Tk 9 only")
 def test_touchpad_two_finger_scroll_moves_the_list(tmp_path):
     app = _list_with_files(tmp_path)
     try:

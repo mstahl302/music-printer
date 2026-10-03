@@ -12,11 +12,15 @@ etc. are the stock `tk.Label` methods, untouched.
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 
 GREEN = "#2f8f4e"
 RED = "#c0392b"
 BLUE = "#2b5fb0"
+
+# "pointinghand" exists only on macOS aqua; X11 Tk rejects it (CI runs on Linux).
+HAND = "pointinghand" if sys.platform == "darwin" else "hand2"
 
 
 def _rgb(h: str) -> tuple[int, int, int]:
@@ -45,7 +49,7 @@ class Button(tk.Label):
         super().__init__(
             parent, text=text, bg=colour, fg="white", font="TkDefaultFont",
             padx=20 if big else 16, pady=9 if big else 7,
-            bd=0, relief="flat", highlightthickness=0, cursor="pointinghand",
+            bd=0, relief="flat", highlightthickness=0, cursor=HAND,
         )
         self._command = command
         self._colour = colour
@@ -79,7 +83,7 @@ class Button(tk.Label):
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = bool(enabled)
         if self._enabled:
-            tk.Label.configure(self, bg=self._colour, fg="white", cursor="pointinghand")
+            tk.Label.configure(self, bg=self._colour, fg="white", cursor=HAND)
         else:
             tk.Label.configure(self, bg=_fade(self._colour), fg="#f4f6fa", cursor="")
 

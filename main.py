@@ -75,7 +75,10 @@ def bind_region_scroll(canvas) -> None:
     subtree, and it is torn down with the window."""
     top = canvas.winfo_toplevel()
     for seq in _SCROLL_SEQS:
-        top.bind(seq, lambda e, c=canvas: _region_scroll(c, e), add="+")
+        try:
+            top.bind(seq, lambda e, c=canvas: _region_scroll(c, e), add="+")
+        except tk.TclError:            # <TouchpadScroll> is Tk 9 only (CI has 8.6)
+            pass
 
 
 def _precise_deltas(dxdy: int) -> tuple[int, int]:
@@ -265,7 +268,7 @@ class FileList(ttk.Frame):
     def _remove_icon(self, row, idx: int, stripe: str) -> tk.Canvas:
         d, m = self.RM_D, 6.5           # m = X inset from the disc edge
         c = tk.Canvas(row, width=d, height=d, bg=stripe, highlightthickness=0,
-                      bd=0, cursor="pointinghand", takefocus=0)
+                      bd=0, cursor=widgets.HAND, takefocus=0)
         oval = c.create_oval(1, 1, d - 1, d - 1, fill=self._RM_RED, outline="",
                              disabledfill="#e2bcbf")
         for x0, x1 in ((m, d - m), (d - m, m)):
@@ -835,7 +838,7 @@ class App(tk.Tk):
         # bounding box.
         self.options_btn = tk.Canvas(frm, width=30, height=20, bg="#e6e6e6",
                                      highlightthickness=0, bd=0,
-                                     cursor="pointinghand", takefocus=0)
+                                     cursor=widgets.HAND, takefocus=0)
         self.options_btn.create_text(15, 10, text="⚙", font=("TkDefaultFont", 15),
                                      fill="#333333", disabledfill="#9a9a9a")
         self.options_btn.grid(row=0, column=2, sticky="e", padx=(2, 10), pady=5)
